@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+
+# Env
+.env
+
+# OS / editor
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local frontend server artifacts
+*.log

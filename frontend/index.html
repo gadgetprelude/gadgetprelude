@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Booking Page</title>
+  <style>
+    :root {
+        --brand-color: #2563eb;
+    }
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f5f7fb;
+    color: #1f2937;
+  }
+
+  .page {
+    max-width: 900px;
+    margin: 40px auto;
+    padding: 24px;
+  }
+
+  .hero {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+
+  .hero h1 {
+    margin: 0 0 10px;
+    font-size: 32px;
+  }
+
+  .hero p {
+    margin: 0;
+    color: #6b7280;
+    font-size: 16px;
+  }
+
+  .card {
+    background: white;
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+
+  .full-width {
+    grid-column: 1 / -1;
+  }
+
+  label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+    font-size: 14px;
+  }
+
+  input, select, button {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid #d1d5db;
+    font-size: 15px;
+  }
+
+  input:focus, select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  }
+
+  button {
+    cursor: pointer;
+    border: none;
+    background: var(--brand-color);
+    color: white;
+    font-weight: bold;
+    transition: 0.2s ease;
+  }
+
+  button:hover {
+    background: #1d4ed8;
+  }
+
+  button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .secondary-btn {
+    background: #0f172a;
+  }
+
+  .secondary-btn:hover {
+    background: #111827;
+  }
+
+  .slots {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .slot-btn {
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #fff;
+    color: #111827;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s ease;
+  }
+
+  .slot-btn:hover {
+    border-color: var(--brand-color);
+    background: #f8fafc;
+  }
+
+  .slot-btn.selected {
+    background: var(--brand-color);
+    color: white;
+    border-color: var(--brand-color);
+  }
+
+  .section-title {
+    margin: 0 0 14px;
+    font-size: 18px;
+  }
+
+  .message {
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    font-weight: 600;
+  }
+
+  .success {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .error {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .footer-note {
+    margin-top: 18px;
+    color: #6b7280;
+    font-size: 13px;
+    text-align: center;
+  }
+
+  @media (max-width: 720px) {
+    .page {
+      margin: 20px auto;
+      padding: 16px;
+    }
+
+    .grid {
+      grid-template-columns: 1fr;
+    }
+
+    .slots {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .hero h1 {
+      font-size: 26px;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+  <div class="hero">
+    <h1 id="pageTitle">Marcar serviço</h1>
+    <p>Escolhe o serviço, a data e o horário que te for mais conveniente.</p>
+  </div>
+
+  <div class="card">
+
+  <label for="service">Serviço</label>
+  <select id="service"></select>
+
+  <label for="date">Data</label>
+  <input type="date" id="date" />
+
+  <button id="loadSlotsBtn">Ver horários disponíveis</button>
+
+  <div id="slotsContainer" class="slots"></div>
+
+  <label for="name">Nome</label>
+  <input type="text" id="name" placeholder="O seu nome" />
+
+  <label for="email">Email</label>
+  <input type="email" id="email" placeholder="O seu email" />
+
+  <button id="bookBtn">Confirmar marcação</button>
+
+  <div id="message"></div>
+
+  <script>
+  const API_BASE = "http://127.0.0.1:8000";
+
+  const serviceSelect = document.getElementById("service");
+  const dateInput = document.getElementById("date");
+  const loadSlotsBtn = document.getElementById("loadSlotsBtn");
+  const slotsContainer = document.getElementById("slotsContainer");
+  const nameInput = document.getElementById("name");
+  const emailInput = document.getElementById("email");
+  const bookBtn = document.getElementById("bookBtn");
+  const messageDiv = document.getElementById("message");
+
+  let selectedSlot = null;
+  let publicConfig = null;
+  
+  const urlParams = new URLSearchParams(window.location.search);
+  const tenantKey = urlParams.get("tenant") || "default";
+
+  function showMessage(text, type) {
+    messageDiv.className = `message ${type}`;
+    messageDiv.textContent = text;
+  }
+
+  function clearMessage() {
+    messageDiv.className = "";
+    messageDiv.textContent = "";
+  }
+
+  function clearSlots() {
+    slotsContainer.innerHTML = "";
+    selectedSlot = null;
+  }
+
+  function setTodayAsMinDate() {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    dateInput.min = `${yyyy}-${mm}-${dd}`;
+  }
+  async function loadConfig() {
+    const res = await fetch(`${API_BASE}/public/config?tenant_key=${encodeURIComponent(tenantKey)}`);
+    const data = await res.json();
+
+    if (!res.ok) {
+        throw new Error(data.detail || "Erro ao carregar configuração pública.");
+    }
+
+    publicConfig = data;
+
+    if (data.business_name) {
+        document.getElementById("pageTitle").textContent = `Marcar serviço - ${data.business_name}`;
+    }
+
+    if (data.subtitle) {
+        const subtitleEl = document.querySelector(".hero p");
+        if (subtitleEl) subtitleEl.textContent = data.subtitle;
+    }
+
+    if (data.primary_color) {
+        document.documentElement.style.setProperty("--brand-color", data.primary_color);
+    }
+  }
+  async function loadServices() {
+    clearMessage();
+
+    const res = await fetch(`${API_BASE}/public/services?tenant_key=${encodeURIComponent(tenantKey)}`);
+    const services = await res.json();
+
+    serviceSelect.innerHTML = "";
+    services.forEach(service => {
+      const option = document.createElement("option");
+      option.value = service.id;
+      option.textContent = `${service.name} (${service.duration_minutes} min)`;
+      serviceSelect.appendChild(option);
+    });
+  }
+
+  async function loadAvailability() {
+    clearMessage();
+    clearSlots();
+
+    const serviceId = serviceSelect.value;
+    const dateStr = dateInput.value;
+
+    if (!serviceId || !dateStr) {
+      showMessage("Escolhe um serviço e uma data.", "error");
+      return;
+    }
+
+    loadSlotsBtn.disabled = true;
+    loadSlotsBtn.textContent = "A carregar horários...";
+
+    try {
+      const url = `${API_BASE}/public/availability?tenant_key=${encodeURIComponent(tenantKey)}&service_id=${serviceId}&date_str=${dateStr}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (!res.ok) {
+        showMessage(data.detail || "Erro ao carregar disponibilidade.", "error");
+        return;
+      }
+
+      if (!data.slots || data.slots.length === 0) {
+        showMessage("Não existem horários disponíveis para essa data.", "error");
+        return;
+      }
+
+      data.slots.forEach(slot => {
+        const btn = document.createElement("button");
+        btn.className = "slot-btn";
+        btn.type = "button";
+
+        const dt = new Date(slot);
+        btn.textContent = dt.toLocaleTimeString("pt-PT", {
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".slot-btn").forEach(b => b.classList.remove("selected"));
+          btn.classList.add("selected");
+          selectedSlot = slot;
+          clearMessage();
+        });
+
+        slotsContainer.appendChild(btn);
+      });
+    } catch (error) {
+      showMessage("Erro de ligação ao servidor ao carregar horários.", "error");
+    } finally {
+      loadSlotsBtn.disabled = false;
+      loadSlotsBtn.textContent = "Ver horários disponíveis";
+    }
+  }
+
+  async function bookAppointment() {
+    clearMessage();
+
+    const serviceId = parseInt(serviceSelect.value, 10);
+    const customerName = nameInput.value.trim();
+    const customerEmail = emailInput.value.trim();
+
+    if (!selectedSlot) {
+      showMessage("Escolhe um horário.", "error");
+      return;
+    }
+
+    if (!customerName || !customerEmail) {
+      showMessage("Preenche nome e email.", "error");
+      return;
+    }
+
+    bookBtn.disabled = true;
+    bookBtn.textContent = "A confirmar marcação...";
+    
+    if (!publicConfig || !publicConfig.calendar_email) {
+      showMessage("Configuração da empresa indisponível.", "error");
+      return;
+    }
+    const payload = {
+      tenant_key: tenantKey,
+      calendar_email: publicConfig?.calendar_email,
+      service_id: serviceId,
+      start_at: selectedSlot,
+      customer_name: customerName,
+      customer_email: customerEmail
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/public/book`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        showMessage(data.detail || "Erro ao criar marcação.", "error");
+        return;
+      }
+
+      showMessage(publicConfig?.success_message || "Marcação criada com sucesso. Verifica o teu email para o convite.","success");
+
+      clearSlots();
+      nameInput.value = "";
+      emailInput.value = "";
+    } catch (error) {
+      showMessage("Erro de ligação ao servidor ao criar marcação.", "error");
+    } finally {
+      bookBtn.disabled = false;
+      bookBtn.textContent = "Confirmar marcação";
+    }
+  }
+
+  dateInput.addEventListener("change", () => {
+    clearSlots();
+    clearMessage();
+  });
+
+  serviceSelect.addEventListener("change", () => {
+    clearSlots();
+    clearMessage();
+  });
+
+  loadSlotsBtn.addEventListener("click", loadAvailability);
+  bookBtn.addEventListener("click", bookAppointment);
+
+  async function initPage() {
+    try {
+        setTodayAsMinDate();
+        await loadConfig();
+        await loadServices();
+    } catch (error) {
+        showMessage("Erro ao carregar a página de marcação.", "error");
+        console.error(error);
+    }
+  }
+
+initPage();
+</script>
+    <div class="footer-note">
+      Após a confirmação, receberás um convite por email.
+    </div>
+  </div>
+</div>
+</body>
+</html>
