@@ -8,7 +8,7 @@ from models import Tenant
 from models import ReminderPolicy, Reminder  
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
-from models import CalendarConnection, Contact, Service, Appointment
+from models import CalendarConnection, Contact, Service, Appointment, Provider, ProviderService
 from datetime import datetime, date, time, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
@@ -64,10 +64,15 @@ class AppointmentCancel(BaseModel):
 class AgentChatIn(BaseModel):
     message: str
 
+class PublicProviderOut(BaseModel):
+    id: int
+    name: str
+
 class PublicBookingCreate(BaseModel):
     tenant_key: str = "default"
     calendar_email: str
     service_id: int
+    provider_id: int
     start_at: datetime
     customer_name: str
     customer_email: str
@@ -455,6 +460,13 @@ def agent_chat(payload: AgentChatIn, db: Session = Depends(get_db), x_tenant_key
 def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
     tenant = get_tenant(db, payload.tenant_key)
 
+    provider = db.get(Provider, payload.provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    if provider.tenant_id != tenant.id:
+        raise HTTPException(status_code=403, detail="Provider not in tenant")
+    
     service = db.get(Service, payload.service_id)
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
@@ -482,7 +494,7 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
     end = start + timedelta(minutes=service.duration_minutes)
 
     event_body = {
-        "summary": f"{service.name} - {payload.customer_name}",
+        "summary": f"{service.name} - {payload.customer_name} - {provider.name}",
         "description": "Booking via GadgetPrelude",
         "start": {"dateTime": start.isoformat()},
         "end": {"dateTime": end.isoformat()},
@@ -500,6 +512,7 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
     ap = Appointment(
         tenant_id=tenant.id,
         contact_id=contact.id,
+        provider_id=provider.id,
         service_id=service.id,
         start_at=start,
         end_at=end,
@@ -517,11 +530,17 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
         "google_link": created.get("htmlLink")
     }
 
+def to_utc_aware(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
 @app.get("/public/availability")
 def public_availability(
     service_id: int,
     date_str: str,
     tenant_key: str = "default",
+    provider_id: int | None = None,
     db: Session = Depends(get_db),
 ):
     tenant = get_tenant(db, tenant_key)
@@ -541,15 +560,18 @@ def public_availability(
     day_start = datetime.combine(target_date, time(9, 0), tzinfo=timezone.utc)
     day_end = datetime.combine(target_date, time(18, 0), tzinfo=timezone.utc)
 
-    existing = (
+    query = (
         db.query(Appointment)
         .filter(Appointment.tenant_id == tenant.id)
         .filter(Appointment.status.in_(["scheduled", "rescheduled"]))
         .filter(Appointment.start_at < day_end)
         .filter(Appointment.end_at > day_start)
-        .order_by(Appointment.start_at.asc())
-        .all()
     )
+
+    if provider_id is not None:
+        query = query.filter(Appointment.provider_id == provider_id)
+
+    existing = query.order_by(Appointment.start_at.asc()).all()
 
     slots = []
     current = day_start
@@ -560,7 +582,7 @@ def public_availability(
         candidate_end = current + service_duration
 
         overlaps = any(
-            ap.start_at < candidate_end and ap.end_at > current
+            to_utc_aware(ap.start_at) < candidate_end and to_utc_aware(ap.end_at) > current
             for ap in existing
         )
 
@@ -577,14 +599,26 @@ def public_availability(
     }
 
 @app.get("/public/services")
-def public_services(tenant_key: str = "default", db: Session = Depends(get_db)):
+def public_services(
+    tenant_key: str = "default",
+    provider_id: int | None = None,
+    db: Session = Depends(get_db),
+):
     tenant = get_tenant(db, tenant_key)
 
-    services = (
+    query = (
         db.query(Service)
         .filter(Service.tenant_id == tenant.id)
-        .all()
     )
+
+    if provider_id is not None:
+        query = (
+            query.join(ProviderService, ProviderService.service_id == Service.id)
+            .filter(ProviderService.tenant_id == tenant.id)
+            .filter(ProviderService.provider_id == provider_id)
+        )
+
+    services = query.all()
 
     return [
         {
@@ -678,3 +712,21 @@ def debug_telegram_tomorrow_summary(
     message = build_tomorrow_summary(db, tenant_key)
     result = send_telegram_message(message)
     return {"ok": True, "message_sent": message, "telegram_result": result}
+
+@app.get("/public/providers")
+def public_providers(tenant_key: str = "default", db: Session = Depends(get_db)):
+    tenant = get_tenant(db, tenant_key)
+
+    providers = (
+        db.query(Provider)
+        .filter(Provider.tenant_id == tenant.id)
+        .all()
+    )
+
+    return [
+        {
+            "id": p.id,
+            "name": p.name,
+        }
+        for p in providers
+    ]

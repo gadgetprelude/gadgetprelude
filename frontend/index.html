@@ -192,6 +192,9 @@
 
   <div class="card">
 
+  <label for="provider">Prestador</label>
+  <select id="provider"></select>
+
   <label for="service">Serviço</label>
   <select id="service"></select>
 
@@ -213,8 +216,10 @@
   <div id="message"></div>
 
   <script>
-  const API_BASE = "https://gadgetprelude.onrender.com";
+  //const API_BASE = "https://gadgetprelude.onrender.com";
+  const API_BASE = "http://127.0.0.1:8000";
 
+  const providerSelect = document.getElementById("provider");
   const serviceSelect = document.getElementById("service");
   const dateInput = document.getElementById("date");
   const loadSlotsBtn = document.getElementById("loadSlotsBtn");
@@ -275,10 +280,32 @@
         document.documentElement.style.setProperty("--brand-color", data.primary_color);
     }
   }
+
+  async function loadProviders() {
+    clearMessage();
+
+    const res = await fetch(`${API_BASE}/public/providers?tenant_key=${encodeURIComponent(tenantKey)}`);
+    const providers = await res.json();
+
+    if (!res.ok) {
+      throw new Error("Erro ao carregar prestadores.");
+    }
+
+    providerSelect.innerHTML = "";
+
+    providers.forEach(provider => {
+      const option = document.createElement("option");
+      option.value = provider.id;
+      option.textContent = provider.name;
+      providerSelect.appendChild(option);
+    });
+  }
+
   async function loadServices() {
     clearMessage();
 
-    const res = await fetch(`${API_BASE}/public/services?tenant_key=${encodeURIComponent(tenantKey)}`);
+    const providerId = providerSelect.value;
+    const res = await fetch(`${API_BASE}/public/services?tenant_key=${encodeURIComponent(tenantKey)}&provider_id=${providerId}`);
     const services = await res.json();
 
     serviceSelect.innerHTML = "";
@@ -294,6 +321,7 @@
     clearMessage();
     clearSlots();
 
+    const providerId = providerSelect.value;
     const serviceId = serviceSelect.value;
     const dateStr = dateInput.value;
 
@@ -306,8 +334,7 @@
     loadSlotsBtn.textContent = "A carregar horários...";
 
     try {
-      const url = `${API_BASE}/public/availability?tenant_key=${encodeURIComponent(tenantKey)}&service_id=${serviceId}&date_str=${dateStr}`;
-      const res = await fetch(url);
+      const url = `${API_BASE}/public/availability?tenant_key=${encodeURIComponent(tenantKey)}&provider_id=${providerId}&service_id=${serviceId}&date_str=${dateStr}`;      const res = await fetch(url);
       const data = await res.json();
 
       if (!res.ok) {
@@ -351,6 +378,7 @@
   async function bookAppointment() {
     clearMessage();
 
+    const providerId = parseInt(providerSelect.value, 10);
     const serviceId = parseInt(serviceSelect.value, 10);
     const customerName = nameInput.value.trim();
     const customerEmail = emailInput.value.trim();
@@ -375,6 +403,7 @@
     const payload = {
       tenant_key: tenantKey,
       calendar_email: publicConfig?.calendar_email,
+      provider_id: providerId,
       service_id: serviceId,
       start_at: selectedSlot,
       customer_name: customerName,
@@ -415,6 +444,11 @@
     clearMessage();
   });
 
+  providerSelect.addEventListener("change", async () => {
+    clearSlots();
+    clearMessage();
+    await loadServices();
+  });
   serviceSelect.addEventListener("change", () => {
     clearSlots();
     clearMessage();
@@ -427,6 +461,7 @@
     try {
         setTodayAsMinDate();
         await loadConfig();
+        await loadProviders();
         await loadServices();
     } catch (error) {
         showMessage("Erro ao carregar a página de marcação.", "error");

@@ -1,8 +1,5 @@
-from sqlalchemy import String, DateTime, Text
-from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.sql import func
 from db import Base
-from sqlalchemy import String, DateTime, Text, Integer, ForeignKey
+from sqlalchemy import String, DateTime, Text, Integer, ForeignKey, Column
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -45,6 +42,8 @@ class Appointment(Base):
     tenant_id: Mapped[int | None] = mapped_column(ForeignKey("tenants.id"), nullable=True)
     contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), nullable=False)
     service_id: Mapped[int] = mapped_column(ForeignKey("services.id"), nullable=False)
+    provider_id = Column(Integer, ForeignKey("providers.id"), nullable=True)
+    
 
     start_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -99,5 +98,20 @@ class Tenant(Base):
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+class Provider(Base):
+    __tablename__ = "providers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    name = Column(String, nullable=False)
+
+class ProviderService(Base):
+    __tablename__ = "provider_services"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False)
+    service_id = Column(Integer, ForeignKey("services.id"), nullable=False)
 
 
