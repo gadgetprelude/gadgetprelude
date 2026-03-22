@@ -396,13 +396,18 @@
     bookBtn.disabled = true;
     bookBtn.textContent = "A confirmar marcação...";
     
-    if (!publicConfig || !publicConfig.calendar_email) {
-      showMessage("Configuração da empresa indisponível.", "error");
+    //if (!publicConfig || !publicConfig.calendar_email) {
+    //  showMessage("Configuração da empresa indisponível.", "error");
+    //  return;
+    //}
+    if (!providerId) {
+      showMessage("Escolhe um prestador.", "error");
       return;
-    }
+    } 
+    
     const payload = {
       tenant_key: tenantKey,
-      calendar_email: publicConfig?.calendar_email,
+      //calendar_email: publicConfig?.calendar_email,
       provider_id: providerId,
       service_id: serviceId,
       start_at: selectedSlot,

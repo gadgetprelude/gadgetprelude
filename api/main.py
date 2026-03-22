@@ -70,7 +70,7 @@ class PublicProviderOut(BaseModel):
 
 class PublicBookingCreate(BaseModel):
     tenant_key: str = "default"
-    calendar_email: str
+    #calendar_email: str
     service_id: int
     provider_id: int
     start_at: datetime
@@ -467,6 +467,17 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
     if provider.tenant_id != tenant.id:
         raise HTTPException(status_code=403, detail="Provider not in tenant")
     
+    if not provider.calendar_email:
+        raise HTTPException(status_code=400, detail="Provider calendar not configured")
+
+    conn = db.query(CalendarConnection).filter(
+        CalendarConnection.tenant_id == tenant.id,
+        CalendarConnection.email == provider.calendar_email
+    ).first()
+
+    if not conn:
+        raise HTTPException(status_code=404, detail="No Google Calendar connection for this provider")
+
     service = db.get(Service, payload.service_id)
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
@@ -484,7 +495,7 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
     # ligação ao google
     conn = db.query(CalendarConnection).filter(
         CalendarConnection.tenant_id == tenant.id,
-        CalendarConnection.email == payload.calendar_email
+        #CalendarConnection.email == payload.calendar_email
     ).first()
 
     creds = creds_from_token_json(conn.token_json)
@@ -642,7 +653,7 @@ def public_config(tenant_key: str = "default", db: Session = Depends(get_db)):
     return {
         "tenant_key": tenant.key,
         "business_name": tenant.name,
-        "calendar_email": conn.email if conn else None,
+        #"calendar_email": conn.email if conn else None,
         "primary_color": "#2563eb",
         "subtitle": "Escolhe o serviço, a data e o horário que te for mais conveniente.",
         "success_message": "Marcação criada com sucesso. Verifica o teu email para o convite."

@@ -105,6 +105,7 @@ class Provider(Base):
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     name = Column(String, nullable=False)
+    calendar_email = Column(String, nullable=True)
 
 class ProviderService(Base):
     __tablename__ = "provider_services"
