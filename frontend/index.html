@@ -216,8 +216,8 @@
   <div id="message"></div>
 
   <script>
-  //const API_BASE = "https://gadgetprelude.onrender.com";
-  const API_BASE = "http://127.0.0.1:8000";
+  const API_BASE = "https://gadgetprelude.onrender.com";
+  //const API_BASE = "http://127.0.0.1:8000";
 
   const providerSelect = document.getElementById("provider");
   const serviceSelect = document.getElementById("service");
@@ -404,7 +404,7 @@
       showMessage("Escolhe um prestador.", "error");
       return;
     } 
-    
+
     const payload = {
       tenant_key: tenantKey,
       //calendar_email: publicConfig?.calendar_email,
