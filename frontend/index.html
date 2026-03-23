@@ -259,12 +259,12 @@
 
   function showMessage(text, type) {
     messageDiv.className = `message ${type}`;
-    messageDiv.textContent = text;
+    messageDiv.innerHTML = text;
   }
 
   function clearMessage() {
     messageDiv.className = "";
-    messageDiv.textContent = "";
+    messageDiv.innerHTML = "";
   }
 
   function clearSlots() {
@@ -441,10 +441,6 @@
     bookBtn.disabled = true;
     bookBtn.textContent = "A confirmar marcação...";
     
-    //if (!publicConfig || !publicConfig.calendar_email) {
-    //  showMessage("Configuração da empresa indisponível.", "error");
-    //  return;
-    //}
     if (!providerId) {
       showMessage("Escolhe um prestador.", "error");
       return;
@@ -452,7 +448,6 @@
 
     const payload = {
       tenant_key: tenantKey,
-      //calendar_email: publicConfig?.calendar_email,
       provider_id: providerId,
       service_id: serviceId,
       start_at: selectedSlot,
@@ -476,8 +471,16 @@
         return;
       }
 
-      showMessage(publicConfig?.success_message || "Marcação criada com sucesso. Verifica o teu email para o convite.","success");
-
+      const manageUrl = `${window.location.origin}/manage.html?token=${encodeURIComponent(data.public_token)}`;
+      messageDiv.className = "message success";
+      messageDiv.innerHTML = `
+        <div>${publicConfig?.success_message || "Marcação criada com sucesso. Verifica o teu email para o convite."}</div>
+        <div style="margin-top: 10px;">
+          <a href="${manageUrl}" style="color: inherit; font-weight: bold; text-decoration: underline;">
+            Gerir marcação
+          </a>
+        </div>
+      `;
       clearSlots();
       nameInput.value = "";
       emailInput.value = "";
