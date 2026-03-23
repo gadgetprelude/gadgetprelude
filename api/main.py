@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+import secrets
 from pydantic import BaseModel
 from agent import run_agent
 from fastapi import Header
@@ -76,6 +77,13 @@ class PublicBookingCreate(BaseModel):
     start_at: datetime
     customer_name: str
     customer_email: str
+
+class PublicCancelByToken(BaseModel):
+    token: str
+
+class PublicRescheduleByToken(BaseModel):
+    token: str
+    new_start_at: datetime
 
 # cria tabelas (MVP). Em produção: migrations (alembic).
 Base.metadata.create_all(bind=engine)
@@ -459,8 +467,9 @@ def agent_chat(payload: AgentChatIn, db: Session = Depends(get_db), x_tenant_key
 @app.post("/public/book")
 def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
     tenant = get_tenant(db, payload.tenant_key)
-
     provider = db.get(Provider, payload.provider_id)
+    public_token = secrets.token_urlsafe(32)
+
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
 
@@ -502,6 +511,9 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
     service_api = calendar_service_from_creds(creds)
 
     start = payload.start_at
+    now_utc = datetime.now(timezone.utc)
+    if start < now_utc:
+        raise HTTPException(status_code=400, detail="Cannot create bookings in the past")
     end = start + timedelta(minutes=service.duration_minutes)
 
     event_body = {
@@ -528,6 +540,7 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
         start_at=start,
         end_at=end,
         status="scheduled",
+        public_token = public_token,
         external_event_id=created.get("id"),
         external_html_link=created.get("htmlLink")
     )
@@ -538,7 +551,8 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
     return {
         "ok": True,
         "message": "Booking criado com sucesso",
-        "google_link": created.get("htmlLink")
+        "google_link": created.get("htmlLink"),
+        "public_token": public_token
     }
 
 def to_utc_aware(dt: datetime) -> datetime:
@@ -741,3 +755,170 @@ def public_providers(tenant_key: str = "default", db: Session = Depends(get_db))
         }
         for p in providers
     ]
+
+@app.get("/public/booking-by-token")
+def public_booking_by_token(token: str, db: Session = Depends(get_db)):
+    ap = (
+        db.query(Appointment)
+        .filter(Appointment.public_token == token)
+        .first()
+    )
+
+    if not ap:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    contact = db.get(Contact, ap.contact_id)
+    service = db.get(Service, ap.service_id)
+    provider = db.get(Provider, ap.provider_id) if ap.provider_id else None
+    tenant = db.get(Tenant, ap.tenant_id)
+
+    return {
+        "appointment_id": ap.id,
+        "tenant_key": tenant.key if tenant else None,
+        "customer_name": contact.name if contact else None,
+        "customer_email": contact.email if contact else None,
+        "service_id": ap.service_id,
+        "service_name": service.name if service else None,
+        "provider_id": ap.provider_id,
+        "provider_name": provider.name if provider else None,
+        "start_at": ap.start_at.isoformat() if ap.start_at else None,
+        "end_at": ap.end_at.isoformat() if ap.end_at else None,
+        "status": ap.status,
+        "public_token": ap.public_token,
+    }
+
+@app.post("/public/cancel-by-token")
+def public_cancel_by_token(payload: PublicCancelByToken, db: Session = Depends(get_db)):
+    ap = (
+        db.query(Appointment)
+        .filter(Appointment.public_token == payload.token)
+        .first()
+    )
+
+    if not ap:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if ap.status == "cancelled":
+        return {
+            "ok": True,
+            "message": "Booking already cancelled",
+            "appointment_id": ap.id,
+            "status": ap.status,
+        }
+
+    provider = db.get(Provider, ap.provider_id) if ap.provider_id else None
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    if not provider.calendar_email:
+        raise HTTPException(status_code=400, detail="Provider calendar not configured")
+
+    conn = (
+        db.query(CalendarConnection)
+        .filter(CalendarConnection.tenant_id == ap.tenant_id)
+        .filter(CalendarConnection.email == provider.calendar_email)
+        .first()
+    )
+
+    if not conn:
+        raise HTTPException(status_code=404, detail="No Google Calendar connection for this provider")
+
+    if ap.external_event_id:
+        creds = creds_from_token_json(conn.token_json)
+        service_api = calendar_service_from_creds(creds)
+        service_api.events().delete(
+            calendarId=conn.calendar_id,
+            eventId=ap.external_event_id
+        ).execute()
+
+    ap.status = "cancelled"
+    db.add(ap)
+    db.commit()
+    db.refresh(ap)
+
+    cancel_pending_reminders(db, ap.id)
+
+    return {
+        "ok": True,
+        "message": "Booking cancelled successfully",
+        "appointment_id": ap.id,
+        "status": ap.status,
+    }
+
+@app.post("/public/reschedule-by-token")
+def public_reschedule_by_token(payload: PublicRescheduleByToken, db: Session = Depends(get_db)):
+    ap = (
+        db.query(Appointment)
+        .filter(Appointment.public_token == payload.token)
+        .first()
+    )
+
+    if not ap:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if ap.status == "cancelled":
+        raise HTTPException(status_code=400, detail="Cannot reschedule a cancelled booking")
+
+    provider = db.get(Provider, ap.provider_id) if ap.provider_id else None
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    if not provider.calendar_email:
+        raise HTTPException(status_code=400, detail="Provider calendar not configured")
+
+    service = db.get(Service, ap.service_id)
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    conn = (
+        db.query(CalendarConnection)
+        .filter(CalendarConnection.tenant_id == ap.tenant_id)
+        .filter(CalendarConnection.email == provider.calendar_email)
+        .first()
+    )
+
+    if not conn:
+        raise HTTPException(status_code=404, detail="No Google Calendar connection for this provider")
+
+    new_start = payload.new_start_at
+    now_utc = datetime.now(timezone.utc)
+    if new_start < now_utc:
+        raise HTTPException(status_code=400, detail="Cannot reschedule to the past")
+
+    new_end = new_start + timedelta(minutes=service.duration_minutes)
+
+    creds = creds_from_token_json(conn.token_json)
+    service_api = calendar_service_from_creds(creds)
+
+    if not ap.external_event_id:
+        raise HTTPException(status_code=400, detail="Booking has no external event id")
+
+    updated = service_api.events().patch(
+        calendarId=conn.calendar_id,
+        eventId=ap.external_event_id,
+        body={
+            "start": {"dateTime": new_start.isoformat()},
+            "end": {"dateTime": new_end.isoformat()},
+        }
+    ).execute()
+
+    ap.start_at = new_start
+    ap.end_at = new_end
+    ap.status = "rescheduled"
+    ap.external_html_link = updated.get("htmlLink") or ap.external_html_link
+
+    db.add(ap)
+    db.commit()
+    db.refresh(ap)
+
+    schedule_reminders_for_appointment(db, ap, policy_key="default")
+
+    return {
+        "ok": True,
+        "message": "Booking rescheduled successfully",
+        "appointment_id": ap.id,
+        "status": ap.status,
+        "start_at": ap.start_at.isoformat(),
+        "end_at": ap.end_at.isoformat(),
+    }
+

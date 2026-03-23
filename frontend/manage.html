@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gerir marcação</title>
+  <style>
+    :root {
+      --brand-color: #2563eb;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+
+    .page {
+      max-width: 760px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+
+    .hero {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: 30px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: #6b7280;
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    }
+
+    .details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+
+    .detail-box {
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 14px;
+    }
+
+    .detail-label {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+
+    .detail-value {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 12px 16px;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s ease;
+    }
+
+    .cancel-btn {
+      background: #dc2626;
+      color: white;
+    }
+
+    .cancel-btn:hover {
+      background: #b91c1c;
+    }
+
+    .secondary-btn {
+      background: var(--brand-color);
+      color: white;
+    }
+
+    .secondary-btn:hover {
+      opacity: 0.92;
+    }
+
+    .message {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+
+    .success {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    @media (max-width: 720px) {
+      .page {
+        margin: 20px auto;
+        padding: 16px;
+      }
+
+      .details {
+        grid-template-columns: 1fr;
+      }
+
+      .hero h1 {
+        font-size: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="hero">
+      <h1 id="pageTitle">Gerir marcação</h1>
+      <p id="pageSubtitle">Consulta os detalhes da tua marcação e gere-a sem login.</p>
+    </div>
+
+    <div class="card">
+      <div id="bookingDetails" class="details hidden">
+        <div class="detail-box">
+          <div class="detail-label">Cliente</div>
+          <div class="detail-value" id="customerName">-</div>
+        </div>
+
+        <div class="detail-box">
+          <div class="detail-label">Email</div>
+          <div class="detail-value" id="customerEmail">-</div>
+        </div>
+
+        <div class="detail-box">
+          <div class="detail-label">Serviço</div>
+          <div class="detail-value" id="serviceName">-</div>
+        </div>
+
+        <div class="detail-box">
+          <div class="detail-label">Prestador</div>
+          <div class="detail-value" id="providerName">-</div>
+        </div>
+
+        <div class="detail-box">
+          <div class="detail-label">Início</div>
+          <div class="detail-value" id="startAt">-</div>
+        </div>
+
+        <div class="detail-box">
+          <div class="detail-label">Estado</div>
+          <div class="detail-value" id="status">-</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="cancelBtn" class="cancel-btn hidden">Cancelar marcação</button>
+        <button id="showRescheduleBtn" class="secondary-btn hidden">Reagendar marcação</button>
+      </div>
+
+      <div id="rescheduleSection" class="hidden" style="margin-top: 24px;">
+        <div class="details" style="grid-template-columns: 1fr;">
+          <div class="detail-box">
+            <div class="detail-label">Nova data</div>
+            <input type="date" id="newDate" />
+          </div>
+      </div>
+
+      <div class="actions" style="margin-top: 12px;">
+        <button id="loadSlotsBtn" class="secondary-btn">Ver horários disponíveis</button>
+      </div>
+
+      <div id="slotsContainer" class="details" style="margin-top: 16px;"></div>
+
+      <div class="actions" style="margin-top: 16px;">
+        <button id="confirmRescheduleBtn" class="secondary-btn hidden">Confirmar reagendamento</button>
+      </div>
+      </div>
+
+      <div id="message"></div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "https://gadgetprelude.onrender.com";
+    //const API_BASE = "http://127.0.0.1:8000";
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get("token");
+
+    const bookingDetails = document.getElementById("bookingDetails");
+    const customerNameEl = document.getElementById("customerName");
+    const customerEmailEl = document.getElementById("customerEmail");
+    const serviceNameEl = document.getElementById("serviceName");
+    const providerNameEl = document.getElementById("providerName");
+    const startAtEl = document.getElementById("startAt");
+    const statusEl = document.getElementById("status");
+    const cancelBtn = document.getElementById("cancelBtn");
+    const messageDiv = document.getElementById("message");
+
+    const showRescheduleBtn = document.getElementById("showRescheduleBtn");
+    const rescheduleSection = document.getElementById("rescheduleSection");
+    const newDateInput = document.getElementById("newDate");
+    const loadSlotsBtn = document.getElementById("loadSlotsBtn");
+    const slotsContainer = document.getElementById("slotsContainer");
+    const confirmRescheduleBtn = document.getElementById("confirmRescheduleBtn");
+
+    let bookingData = null;
+    let selectedNewSlot = null;
+
+    function showMessage(text, type) {
+      messageDiv.className = `message ${type}`;
+      messageDiv.textContent = text;
+    }
+
+    function clearMessage() {
+      messageDiv.className = "";
+      messageDiv.textContent = "";
+    }
+
+    function formatDateTime(isoString) {
+      if (!isoString) return "-";
+      const dt = new Date(isoString);
+      return dt.toLocaleString("pt-PT", {
+        dateStyle: "short",
+        timeStyle: "short"
+      });
+    }
+
+    async function loadBooking() {
+      clearMessage();
+
+      if (!token) {
+        showMessage("Token em falta.", "error");
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/public/booking-by-token?token=${encodeURIComponent(token)}`);
+        const data = await res.json();
+        bookingData = data;
+
+        if (!res.ok) {
+          showMessage(data.detail || "Não foi possível encontrar a marcação.", "error");
+          return;
+        }
+
+        customerNameEl.textContent = data.customer_name || "-";
+        customerEmailEl.textContent = data.customer_email || "-";
+        serviceNameEl.textContent = data.service_name || "-";
+        providerNameEl.textContent = data.provider_name || "-";
+        startAtEl.textContent = formatDateTime(data.start_at);
+        statusEl.textContent = data.status || "-";
+
+        bookingDetails.classList.remove("hidden");
+
+        if (data.status !== "cancelled") {
+          cancelBtn.classList.remove("hidden");
+          showRescheduleBtn.classList.remove("hidden");
+        }
+      } catch (error) {
+        showMessage("Erro ao carregar a marcação.", "error");
+      }
+    }
+
+    async function cancelBooking() {
+      clearMessage();
+
+      const confirmed = window.confirm("Tens a certeza que queres cancelar esta marcação?");
+      if (!confirmed) return;
+
+      cancelBtn.disabled = true;
+      cancelBtn.textContent = "A cancelar...";
+
+      try {
+        const res = await fetch(`${API_BASE}/public/cancel-by-token`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ token })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          showMessage(data.detail || "Erro ao cancelar a marcação.", "error");
+          return;
+        }
+
+        showMessage("Marcação cancelada com sucesso.", "success");
+        statusEl.textContent = "cancelled";
+        cancelBtn.classList.add("hidden");
+      } catch (error) {
+        showMessage("Erro de ligação ao servidor ao cancelar.", "error");
+      } finally {
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = "Cancelar marcação";
+      }
+    }
+
+    cancelBtn.addEventListener("click", cancelBooking);
+
+    loadBooking();
+
+    function setTodayAsMinDate() {
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const dd = String(today.getDate()).padStart(2, "0");
+      newDateInput.min = `${yyyy}-${mm}-${dd}`;
+    }
+
+    function clearRescheduleSlots() {
+      slotsContainer.innerHTML = "";
+      selectedNewSlot = null;
+      confirmRescheduleBtn.classList.add("hidden");
+    }
+
+    async function loadRescheduleAvailability() {
+      clearMessage();
+      clearRescheduleSlots();
+
+      if (!bookingData) {
+        showMessage("Dados da marcação indisponíveis.", "error");
+        return;
+      }
+
+    const dateStr = newDateInput.value;
+    if (!dateStr) {
+        showMessage("Escolhe uma nova data.", "error");
+        return;
+    }
+
+    loadSlotsBtn.disabled = true;
+    loadSlotsBtn.textContent = "A carregar horários...";
+
+    try {
+        const url = `${API_BASE}/public/availability?tenant_key=${encodeURIComponent(bookingData.tenant_key)}&provider_id=${bookingData.provider_id}&service_id=${bookingData.service_id}&date_str=${dateStr}`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (!res.ok) {
+            const errorText = Array.isArray(data.detail)
+                ? data.detail.map(x => x.msg).join(" | ")
+                : (data.detail || "Erro ao carregar horários.");
+            showMessage(errorText, "error");
+        return;
+        }
+
+        if (!data.slots || data.slots.length === 0) {
+        showMessage("Não existem horários disponíveis para essa data.", "error");
+        return;
+        }
+
+        data.slots.forEach(slot => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "secondary-btn";
+        btn.style.background = "#ffffff";
+        btn.style.color = "#111827";
+        btn.style.border = "1px solid #cbd5e1";
+        btn.style.textAlign = "left";
+
+        const dt = new Date(slot);
+        btn.textContent = dt.toLocaleTimeString("pt-PT", {
+            hour: "2-digit",
+            minute: "2-digit"
+        });
+
+        btn.addEventListener("click", () => {
+            document.querySelectorAll("#slotsContainer button").forEach(b => {
+            b.style.background = "#ffffff";
+            b.style.color = "#111827";
+            b.style.border = "1px solid #cbd5e1";
+            });
+
+            btn.style.background = "var(--brand-color)";
+            btn.style.color = "#ffffff";
+            btn.style.border = "1px solid var(--brand-color)";
+
+            selectedNewSlot = slot;
+            confirmRescheduleBtn.classList.remove("hidden");
+        });
+
+        slotsContainer.appendChild(btn);
+        });
+    } catch (error) {
+        showMessage("Erro de ligação ao servidor ao carregar horários.", "error");
+    } finally {
+        loadSlotsBtn.disabled = false;
+        loadSlotsBtn.textContent = "Ver horários disponíveis";
+    }
+    }
+
+    async function confirmReschedule() {
+    clearMessage();
+
+    if (!selectedNewSlot) {
+        showMessage("Escolhe um novo horário.", "error");
+        return;
+    }
+
+    confirmRescheduleBtn.disabled = true;
+    confirmRescheduleBtn.textContent = "A reagendar...";
+
+    try {
+        const res = await fetch(`${API_BASE}/public/reschedule-by-token`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            token,
+            new_start_at: selectedNewSlot
+        })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            const errorText = Array.isArray(data.detail)
+                ? data.detail.map(x => x.msg).join(" | ")
+                : (data.detail || "Erro ao reagendar a marcação.");
+            showMessage(errorText, "error");        
+            return;
+        }
+
+        showMessage("Marcação reagendada com sucesso.", "success");
+        await loadBooking();
+        clearRescheduleSlots();
+        rescheduleSection.classList.add("hidden");
+    } catch (error) {
+        showMessage("Erro de ligação ao servidor ao reagendar.", "error");
+    } finally {
+        confirmRescheduleBtn.disabled = false;
+        confirmRescheduleBtn.textContent = "Confirmar reagendamento";
+    }
+    }
+    showRescheduleBtn.addEventListener("click", () => {
+      clearMessage();
+      rescheduleSection.classList.toggle("hidden");
+    });
+
+    loadSlotsBtn.addEventListener("click", loadRescheduleAvailability);
+    confirmRescheduleBtn.addEventListener("click", confirmReschedule);
+    setTodayAsMinDate();
+
+  </script>
+</body>
+</html>

@@ -43,6 +43,7 @@ class Appointment(Base):
     contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), nullable=False)
     service_id: Mapped[int] = mapped_column(ForeignKey("services.id"), nullable=False)
     provider_id = Column(Integer, ForeignKey("providers.id"), nullable=True)
+    public_token = Column(String, unique=True, nullable=True, index=True)
     
 
     start_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
