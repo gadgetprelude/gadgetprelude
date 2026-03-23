@@ -164,6 +164,28 @@
   }
 
   @media (max-width: 720px) {
+    input[type="date"] {
+      width: 100%;
+      min-width: 0;
+      appearance: none;
+      -webkit-appearance: none;
+      font-size: 16px;
+      padding: 10px 12px;
+    }
+
+    select,
+    input,
+    button {
+      min-width: 0;
+    }
+
+    .card {
+      padding: 16px;
+    }
+
+    .grid {
+      gap: 12px;
+    }
     .page {
       margin: 20px auto;
       padding: 16px;
@@ -325,6 +347,17 @@
     const serviceId = serviceSelect.value;
     const dateStr = dateInput.value;
 
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+
+    if (dateStr < todayStr) {
+      showMessage("Não podes escolher uma data no passado.", "error");
+      return;
+    }
+
     if (!serviceId || !dateStr) {
       showMessage("Escolhe um serviço e uma data.", "error");
       return;
@@ -382,6 +415,18 @@
     const serviceId = parseInt(serviceSelect.value, 10);
     const customerName = nameInput.value.trim();
     const customerEmail = emailInput.value.trim();
+    const selectedDate = selectedSlot ? selectedSlot.slice(0, 10) : null;
+
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+
+    if (selectedDate && selectedDate < todayStr) {
+      showMessage("Não podes marcar um horário no passado.", "error");
+      return;
+    }
 
     if (!selectedSlot) {
       showMessage("Escolhe um horário.", "error");
