@@ -1,5 +1,5 @@
 from db import Base
-from sqlalchemy import String, DateTime, Text, Integer, ForeignKey, Column
+from sqlalchemy import String, DateTime, Text, Integer, ForeignKey, Column,Time, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -95,7 +95,11 @@ class Tenant(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     key: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)  # ex: "gadgetprelude"
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-
+    logo_url = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    instagram_url = Column(String, nullable=True)
+    facebook_url = Column(String, nullable=True)
+    website_url = Column(String, nullable=True)
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -116,4 +120,13 @@ class ProviderService(Base):
     provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False)
     service_id = Column(Integer, ForeignKey("services.id"), nullable=False)
 
+class ProviderAvailability(Base):
+    __tablename__ = "provider_availability"
 
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False)
+    weekday = Column(Integer, nullable=False)  # 0=segunda ... 6=domingo
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)

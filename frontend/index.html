@@ -202,15 +202,68 @@
     .hero h1 {
       font-size: 26px;
     }
-  }
+
+    .logo-container img {
+  max-width: 110px;
+  max-height: 110px;
+}
+
+.business-links {
+  justify-content: stretch;
+}
+
+.business-link {
+  width: 100%;
+  text-align: center;
+}
+
+}
+  .logo-container {
+  margin-bottom: 16px;
+}
+
+.logo-container img {
+  max-width: 140px;
+  max-height: 140px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+}
+
+.business-links {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.business-link {
+  display: inline-block;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #111827;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.business-link:hover {
+  background: #e5e7eb;
+}
 </style>
 </head>
 <body>
   <div class="page">
   <div class="hero">
-    <h1 id="pageTitle">Marcar serviço</h1>
-    <p>Escolhe o serviço, a data e o horário que te for mais conveniente.</p>
+  <div id="logoContainer" class="logo-container" style="display: none;">
+    <img id="businessLogo" alt="Logo do negócio" />
   </div>
+
+  <h1 id="pageTitle">Marcar serviço</h1>
+  <p id="heroSubtitle">Escolhe o serviço, a data e o horário que te for mais conveniente.</p>
+</div>
 
   <div class="card">
 
@@ -236,10 +289,17 @@
   <button id="bookBtn">Confirmar marcação</button>
 
   <div id="message"></div>
+  
+  <div id="businessLinks" class="business-links" style="display: none;">
+    <a id="phoneLink" class="business-link" href="#" target="_blank" style="display: none;">Telefone</a>
+    <a id="instagramLink" class="business-link" href="#" target="_blank" style="display: none;">Instagram</a>
+    <a id="facebookLink" class="business-link" href="#" target="_blank" style="display: none;">Facebook</a>
+    <a id="websiteLink" class="business-link" href="#" target="_blank" style="display: none;">Site</a>
+  </div>
 
   <script>
-  const API_BASE = "https://gadgetprelude.onrender.com";
-  //const API_BASE = "http://127.0.0.1:8000";
+  //const API_BASE = "https://gadgetprelude.onrender.com";
+  const API_BASE = "http://127.0.0.1:8000";
 
   const providerSelect = document.getElementById("provider");
   const serviceSelect = document.getElementById("service");
@@ -251,11 +311,22 @@
   const bookBtn = document.getElementById("bookBtn");
   const messageDiv = document.getElementById("message");
 
+
   let selectedSlot = null;
   let publicConfig = null;
   
   const urlParams = new URLSearchParams(window.location.search);
   const tenantKey = urlParams.get("tenant") || "default";
+
+  const logoContainer = document.getElementById("logoContainer");
+  const businessLogo = document.getElementById("businessLogo");
+  const heroSubtitle = document.getElementById("heroSubtitle");
+
+  const businessLinks = document.getElementById("businessLinks");
+  const phoneLink = document.getElementById("phoneLink");
+  const instagramLink = document.getElementById("instagramLink");
+  const facebookLink = document.getElementById("facebookLink");
+  const websiteLink = document.getElementById("websiteLink");
 
   function showMessage(text, type) {
     messageDiv.className = `message ${type}`;
@@ -290,17 +361,59 @@
     publicConfig = data;
 
     if (data.business_name) {
-        document.getElementById("pageTitle").textContent = `Marcar serviço - ${data.business_name}`;
+      document.getElementById("pageTitle").textContent = `Marcar serviço - ${data.business_name}`;
     }
 
     if (data.subtitle) {
-        const subtitleEl = document.querySelector(".hero p");
-        if (subtitleEl) subtitleEl.textContent = data.subtitle;
+      heroSubtitle.textContent = data.subtitle;
     }
 
     if (data.primary_color) {
-        document.documentElement.style.setProperty("--brand-color", data.primary_color);
+      document.documentElement.style.setProperty("--brand-color", data.primary_color);
     }
+
+    if (data.logo_url) {
+      businessLogo.src = data.logo_url;
+      logoContainer.style.display = "block";
+    } else {
+      logoContainer.style.display = "none";
+    }
+
+    let hasLinks = false;
+
+    if (data.phone) {
+      phoneLink.href = `tel:${data.phone}`;
+      phoneLink.style.display = "inline-block";
+      hasLinks = true;
+    } else {
+      phoneLink.style.display = "none";
+    }
+
+    if (data.instagram_url) {
+      instagramLink.href = data.instagram_url;
+      instagramLink.style.display = "inline-block";
+      hasLinks = true;
+    } else {
+      instagramLink.style.display = "none";
+    }
+
+    if (data.facebook_url) {
+      facebookLink.href = data.facebook_url;
+      facebookLink.style.display = "inline-block";
+      hasLinks = true;
+    } else {
+      facebookLink.style.display = "none";
+    }
+
+    if (data.website_url) {
+      websiteLink.href = data.website_url;
+      websiteLink.style.display = "inline-block";
+      hasLinks = true;
+    } else {
+      websiteLink.style.display = "none";
+    }
+
+    businessLinks.style.display = hasLinks ? "flex" : "none";
   }
 
   async function loadProviders() {

@@ -2,20 +2,15 @@ import time
 from datetime import datetime, timezone
 
 from db import SessionLocal
-from models import Reminder, Appointment, Contact, Service
+from models import Reminder, Appointment, Contact, Tenant
+from main import send_email_reminder, build_customer_reminder_email
+from dotenv import load_dotenv
 
-def send_email_stub(to_email: str, subject: str, body: str):
-    # MVP: stub (imprime no terminal). Depois ligamos SMTP/SendGrid.
-    print(
-        f"\n--- EMAIL (stub) ---\n"
-        f"To: {to_email}\n"
-        f"Subject: {subject}\n\n"
-        f"{body}\n"
-        f"-------------------\n"
-    )
+load_dotenv()
 
 def run_loop(poll_seconds: int = 10):
     print("Worker de lembretes a correr... (CTRL+C para parar)")
+
     while True:
         db = SessionLocal()
         try:
@@ -31,6 +26,7 @@ def run_loop(poll_seconds: int = 10):
 
             for r in due:
                 ap = db.get(Appointment, r.appointment_id)
+
                 if (not ap) or (ap.status == "cancelled"):
                     r.status = "cancelled"
                     db.add(r)
@@ -38,7 +34,7 @@ def run_loop(poll_seconds: int = 10):
                     continue
 
                 contact = db.get(Contact, ap.contact_id)
-                service = db.get(Service, ap.service_id)
+                tenant = db.get(Tenant, ap.tenant_id)
 
                 if (not contact) or (not contact.email):
                     r.status = "failed"
@@ -47,20 +43,21 @@ def run_loop(poll_seconds: int = 10):
                     db.commit()
                     continue
 
-                subject = f"Lembrete: {service.name if service else 'Marcação'}"
-                body = (
-                    f"Olá {contact.name},\n\n"
-                    f"Isto é um lembrete da sua marcação.\n"
-                    f"Quando: {ap.start_at.isoformat()}\n\n"
-                    f"Até já,\n"
-                    f"GadgetPrelude"
-                )
-
                 try:
-                    send_email_stub(contact.email, subject, body)
+                    subject, html = build_customer_reminder_email(ap, db)
+
+                    send_email_reminder(
+                        contact.email,
+                        subject,
+                        html,
+                        tenant_name=tenant.name if tenant else None
+                    )
+
                     r.status = "sent"
+                    r.error = None
                     db.add(r)
                     db.commit()
+
                 except Exception as e:
                     r.status = "failed"
                     r.error = str(e)
@@ -71,6 +68,7 @@ def run_loop(poll_seconds: int = 10):
             db.close()
 
         time.sleep(poll_seconds)
+
 
 if __name__ == "__main__":
     run_loop()

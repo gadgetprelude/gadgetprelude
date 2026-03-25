@@ -17,13 +17,16 @@ from dotenv import load_dotenv
 from itsdangerous import URLSafeSerializer
 from sqlalchemy.orm import Session
 from datetime import timedelta
-from models import Reminder
+from models import Reminder, ProviderAvailability
 from db import Base, engine, get_db
 from models import CalendarConnection
 from google_oauth import build_flow, creds_from_token_json, calendar_service_from_creds
 from pathlib import Path
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
@@ -475,7 +478,7 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
 
     if provider.tenant_id != tenant.id:
         raise HTTPException(status_code=403, detail="Provider not in tenant")
-    
+
     if not provider.calendar_email:
         raise HTTPException(status_code=400, detail="Provider calendar not configured")
 
@@ -491,6 +494,13 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
 
+    start = payload.start_at
+    now_utc = datetime.now(timezone.utc)
+    if start < now_utc:
+        raise HTTPException(status_code=400, detail="Cannot create bookings in the past")
+
+    end = start + timedelta(minutes=service.duration_minutes)
+
     # criar contacto automaticamente
     contact = Contact(
         tenant_id=tenant.id,
@@ -502,19 +512,8 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
     db.refresh(contact)
 
     # ligação ao google
-    conn = db.query(CalendarConnection).filter(
-        CalendarConnection.tenant_id == tenant.id,
-        #CalendarConnection.email == payload.calendar_email
-    ).first()
-
     creds = creds_from_token_json(conn.token_json)
     service_api = calendar_service_from_creds(creds)
-
-    start = payload.start_at
-    now_utc = datetime.now(timezone.utc)
-    if start < now_utc:
-        raise HTTPException(status_code=400, detail="Cannot create bookings in the past")
-    end = start + timedelta(minutes=service.duration_minutes)
 
     event_body = {
         "summary": f"{service.name} - {payload.customer_name} - {provider.name}",
@@ -540,12 +539,29 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
         start_at=start,
         end_at=end,
         status="scheduled",
-        public_token = public_token,
+        public_token=public_token,
         external_event_id=created.get("id"),
         external_html_link=created.get("htmlLink")
     )
 
     db.add(ap)
+    db.commit()
+    db.refresh(ap)
+
+    # criar reminder 24h antes
+    reminder_time = ap.start_at - timedelta(days=1)
+
+    reminder = Reminder(
+        tenant_id=ap.tenant_id,
+        appointment_id=ap.id,
+        send_at=reminder_time,
+        status="pending",
+        channel="email",
+        template_key="reminder",
+        payload_json="{}"
+    )
+
+    db.add(reminder)
     db.commit()
 
     return {
@@ -582,9 +598,28 @@ def public_availability(
     except ValueError:
         raise HTTPException(status_code=400, detail="date must be in YYYY-MM-DD format")
 
-    day_start = datetime.combine(target_date, time(9, 0), tzinfo=timezone.utc)
-    day_end = datetime.combine(target_date, time(18, 0), tzinfo=timezone.utc)
+    weekday = target_date.weekday()  # 0=segunda ... 6=domingo
 
+    availability = (
+        db.query(ProviderAvailability)
+        .filter(ProviderAvailability.tenant_id == tenant.id)
+        .filter(ProviderAvailability.provider_id == provider_id)
+        .filter(ProviderAvailability.weekday == weekday)
+        .filter(ProviderAvailability.is_active == True)
+        .first()
+    )
+
+    if not availability:
+        return {
+            "service_id": service.id,
+            "date": target_date.isoformat(),
+            "duration_minutes": service.duration_minutes,
+            "slots": [],
+        }
+
+    day_start = datetime.combine(target_date, availability.start_time, tzinfo=timezone.utc)
+    day_end = datetime.combine(target_date, availability.end_time, tzinfo=timezone.utc)
+    
     query = (
         db.query(Appointment)
         .filter(Appointment.tenant_id == tenant.id)
@@ -669,6 +704,11 @@ def public_config(tenant_key: str = "default", db: Session = Depends(get_db)):
         "business_name": tenant.name,
         #"calendar_email": conn.email if conn else None,
         "primary_color": "#2563eb",
+        "logo_url": tenant.logo_url,
+        "phone": tenant.phone,
+        "instagram_url": tenant.instagram_url,
+        "facebook_url": tenant.facebook_url,
+        "website_url": tenant.website_url,
         "subtitle": "Escolhe o serviço, a data e o horário que te for mais conveniente.",
         "success_message": "Marcação criada com sucesso. Verifica o teu email para o convite."
     }
@@ -922,3 +962,86 @@ def public_reschedule_by_token(payload: PublicRescheduleByToken, db: Session = D
         "end_at": ap.end_at.isoformat(),
     }
 
+def send_email_reminder(to_email: str, subject: str, html_body: str, tenant_name: str | None = None):
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_username = os.getenv("SMTP_USERNAME")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    smtp_from_name = os.getenv("SMTP_FROM_NAME", "GadgetPrelude")
+    smtp_from_email = os.getenv("SMTP_FROM_EMAIL")
+
+    if not smtp_host or not smtp_username or not smtp_password or not smtp_from_email:
+        raise RuntimeError("SMTP settings are missing")
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    from_name = f"{tenant_name} via GadgetPrelude" if tenant_name else smtp_from_name
+    msg["From"] = f"{from_name} <{smtp_from_email}>"
+    msg["To"] = to_email
+
+    msg.attach(MIMEText(html_body, "html"))
+
+    with smtplib.SMTP(smtp_host, smtp_port) as server:
+        server.starttls()
+        server.login(smtp_username, smtp_password)
+        server.sendmail(smtp_from_email, [to_email], msg.as_string())
+
+def build_customer_reminder_email(ap: Appointment, db: Session) -> tuple[str, str]:
+    contact = db.get(Contact, ap.contact_id)
+    service = db.get(Service, ap.service_id)
+    provider = db.get(Provider, ap.provider_id) if ap.provider_id else None
+    tenant = db.get(Tenant, ap.tenant_id)
+
+    customer_name = contact.name if contact else "cliente"
+    service_name = service.name if service else "Serviço"
+    provider_name = provider.name if provider else "Prestador"
+    business_name = tenant.name if tenant else "GadgetPrelude"
+    start_str = ap.start_at.strftime("%d/%m/%Y às %H:%M") if ap.start_at else "-"
+    manage_url = f"https://book.gadgetprelude.com/manage.html?token={ap.public_token}"
+
+    subject = f"Lembrete da tua marcação - {business_name}"
+
+    html = f"""
+    <html>
+      <body style="font-family: Arial, sans-serif; color: #1f2937;">
+        <h2>Lembrete da tua marcação</h2>
+        <p>Olá {customer_name},</p>
+        <p>Este é um lembrete da tua marcação:</p>
+        <ul>
+          <li><strong>Negócio:</strong> {business_name}</li>
+          <li><strong>Serviço:</strong> {service_name}</li>
+          <li><strong>Prestador:</strong> {provider_name}</li>
+          <li><strong>Data/Hora:</strong> {start_str}</li>
+        </ul>
+        <p>Podes gerir a tua marcação aqui:</p>
+        <p><a href="{manage_url}">Gerir marcação</a></p>
+      </body>
+    </html>
+    """
+
+    return subject, html
+
+@app.post("/debug/email-reminder/{appointment_id}")
+def debug_email_reminder(appointment_id: int, db: Session = Depends(get_db)):
+    ap = db.get(Appointment, appointment_id)
+    if not ap:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    contact = db.get(Contact, ap.contact_id)
+    if not contact or not contact.email:
+        raise HTTPException(status_code=400, detail="Appointment contact has no email")
+
+    tenant = db.get(Tenant, ap.tenant_id)
+    subject, html = build_customer_reminder_email(ap, db)
+    send_email_reminder(
+        contact.email,
+        subject,
+        html,
+        tenant_name=tenant.name if tenant else None
+    )
+
+    return {
+        "ok": True,
+        "message": "Reminder email sent",
+        "to": contact.email,
+    }
