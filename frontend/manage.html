@@ -214,8 +214,6 @@
   </div>
 
   <script>
-    //const API_BASE = "https://gadgetprelude.onrender.com";
-    const API_BASE = "http://127.0.0.1:8000";
 
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get("token");
@@ -239,6 +237,18 @@
 
     let bookingData = null;
     let selectedNewSlot = null;
+
+    function getApiBase() {
+      const host = window.location.hostname;
+
+      if (host === "127.0.0.1" || host === "localhost") {
+        return "http://127.0.0.1:8000";
+      }
+
+      return "https://gadgetprelude.onrender.com";
+    }
+
+    const API_BASE = getApiBase();
 
     function showMessage(text, type) {
       messageDiv.className = `message ${type}`;
