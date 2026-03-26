@@ -496,7 +496,8 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
 
     start = payload.start_at
     now_utc = datetime.now(timezone.utc)
-    if start < now_utc:
+
+    if start <= now_utc:
         raise HTTPException(status_code=400, detail="Cannot create bookings in the past")
 
     end = start + timedelta(minutes=service.duration_minutes)
@@ -638,8 +639,15 @@ def public_availability(
     slot_step = timedelta(minutes=30)
     service_duration = timedelta(minutes=service.duration_minutes)
 
+    now_utc = datetime.now(timezone.utc)
+
     while current + service_duration <= day_end:
         candidate_end = current + service_duration
+
+        # não mostrar slots no passado (ao minuto)
+        if current <= now_utc:
+            current += slot_step
+            continue
 
         overlaps = any(
             to_utc_aware(ap.start_at) < candidate_end and to_utc_aware(ap.end_at) > current
@@ -702,13 +710,13 @@ def public_config(tenant_key: str = "default", db: Session = Depends(get_db)):
     return {
         "tenant_key": tenant.key,
         "business_name": tenant.name,
-        #"calendar_email": conn.email if conn else None,
         "primary_color": "#2563eb",
         "logo_url": tenant.logo_url,
         "phone": tenant.phone,
         "instagram_url": tenant.instagram_url,
         "facebook_url": tenant.facebook_url,
         "website_url": tenant.website_url,
+        "template_key": tenant.template_key or "default",
         "subtitle": "Escolhe o serviço, a data e o horário que te for mais conveniente.",
         "success_message": "Marcação criada com sucesso. Verifica o teu email para o convite."
     }
@@ -922,7 +930,7 @@ def public_reschedule_by_token(payload: PublicRescheduleByToken, db: Session = D
 
     new_start = payload.new_start_at
     now_utc = datetime.now(timezone.utc)
-    if new_start < now_utc:
+    if new_start <= now_utc:
         raise HTTPException(status_code=400, detail="Cannot reschedule to the past")
 
     new_end = new_start + timedelta(minutes=service.duration_minutes)
