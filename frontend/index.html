@@ -248,7 +248,19 @@
   font-weight: 600;
   font-size: 14px;
 }
-
+.business-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #111827;
+  text-decoration: none;
+  font-size: 20px;
+  font-weight: 600;
+}
 .business-link:hover {
   background: #e5e7eb;
 }
@@ -291,10 +303,10 @@
   <div id="message"></div>
   
   <div id="businessLinks" class="business-links" style="display: none;">
-    <a id="phoneLink" class="business-link" href="#" target="_blank" style="display: none;">Telefone</a>
-    <a id="instagramLink" class="business-link" href="#" target="_blank" style="display: none;">Instagram</a>
-    <a id="facebookLink" class="business-link" href="#" target="_blank" style="display: none;">Facebook</a>
-    <a id="websiteLink" class="business-link" href="#" target="_blank" style="display: none;">Site</a>
+    <a id="phoneLink" class="business-link" href="#" target="_blank" style="display: none;"></a>
+    <a id="instagramLink" class="business-link" href="#" target="_blank" style="display: none;"></a>
+    <a id="facebookLink" class="business-link" href="#" target="_blank" style="display: none;"></a>
+    <a id="websiteLink" class="business-link" href="#" target="_blank" style="display: none;"></a>
   </div>
 
   <script>
@@ -360,9 +372,22 @@
     const dd = String(today.getDate()).padStart(2, "0");
     dateInput.min = `${yyyy}-${mm}-${dd}`;
   }
+  function getTemplateIcons(templateKey = "default") {
+    const iconSets = {
+      default: {
+        phone: "📞",
+        instagram: "📸",
+        facebook: "📘",
+        website: "🌐"
+      }
+    };
+
+    return iconSets[templateKey] || iconSets.default;
+}
   async function loadConfig() {
     const res = await fetch(`${API_BASE}/public/config?tenant_key=${encodeURIComponent(tenantKey)}`);
     const data = await res.json();
+    const icons = getTemplateIcons(data.template_key || "default");
 
     if (!res.ok) {
         throw new Error(data.detail || "Erro ao carregar configuração pública.");
@@ -393,6 +418,8 @@
 
     if (data.phone) {
       phoneLink.href = `tel:${data.phone}`;
+      phoneLink.innerHTML = icons.phone;
+      phoneLink.title = "Telefone";
       phoneLink.style.display = "inline-block";
       hasLinks = true;
     } else {
@@ -401,6 +428,8 @@
 
     if (data.instagram_url) {
       instagramLink.href = data.instagram_url;
+      instagramLink.innerHTML = icons.instagram;
+      instagramLink.title = "Instagram";
       instagramLink.style.display = "inline-block";
       hasLinks = true;
     } else {
@@ -409,18 +438,22 @@
 
     if (data.facebook_url) {
       facebookLink.href = data.facebook_url;
+      facebookLink.innerHTML = icons.facebook;
+      facebookLink.title = "Facebook";
       facebookLink.style.display = "inline-block";
       hasLinks = true;
     } else {
       facebookLink.style.display = "none";
     }
 
-    if (data.website_url) {
-      websiteLink.href = data.website_url;
-      websiteLink.style.display = "inline-block";
+    if (data.facebook_url) {
+      facebookLink.href = data.facebook_url;
+      facebookLink.innerHTML = icons.facebook;
+      facebookLink.title = "Facebook";
+      facebookLink.style.display = "inline-block";
       hasLinks = true;
     } else {
-      websiteLink.style.display = "none";
+      facebookLink.style.display = "none";
     }
 
     businessLinks.style.display = hasLinks ? "flex" : "none";

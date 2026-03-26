@@ -103,6 +103,7 @@ class Tenant(Base):
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    template_key = Column(String, nullable=True)
 
 class Provider(Base):
     __tablename__ = "providers"
