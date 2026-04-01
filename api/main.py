@@ -5,13 +5,13 @@ import secrets
 from pydantic import BaseModel
 from agent import run_agent
 from fastapi import Header
-from models import Tenant
+from models import Tenant, TenantFrontendConfig
 from models import ReminderPolicy, Reminder  
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from models import CalendarConnection, Contact, Service, Appointment, Provider, ProviderService
 from datetime import datetime, date, time, timedelta, timezone
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Body
 from fastapi.responses import RedirectResponse, HTMLResponse
 from dotenv import load_dotenv
 from itsdangerous import URLSafeSerializer
@@ -27,6 +27,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from calendar_adapters.factory import get_calendar_adapter
+from microsoft_oauth import exchange_microsoft_code_for_tokens
 
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
@@ -112,17 +114,43 @@ def google_start(tenant_key: str = "default"):
     )
     return RedirectResponse(auth_url)
 
+@app.get("/auth/calendar/start")
+def calendar_start(tenant_key: str, provider_id: int, db: Session = Depends(get_db)):
+    tenant = get_tenant(db, tenant_key)
+
+    provider = (
+        db.query(Provider)
+        .filter(
+            Provider.id == provider_id,
+            Provider.tenant_id == tenant.id
+        )
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    calendar_provider = (provider.calendar_provider or "").strip().lower()
+
+    if not calendar_provider:
+        raise HTTPException(status_code=400, detail="Provider calendar_provider is not configured")
+
+    adapter = get_calendar_adapter(calendar_provider)
+    return adapter.build_auth_start_response(
+        tenant_key=tenant.key,
+        provider_id=provider.id,
+        serializer=serializer
+    )
 @app.get("/auth/google/callback")
 def google_callback(code: str, state: str, db: Session = Depends(get_db)):
     try:
         data = serializer.loads(state)
-
         tenant_key = (data.get("tenant_key") or "default").strip()
-
+        provider_id = data.get("provider_id")
+        calendar_provider = (data.get("calendar_provider") or "google").strip().lower()
         tenant = db.query(Tenant).filter(Tenant.key == tenant_key).first()
         if not tenant:
             raise HTTPException(status_code=404, detail="Tenant not found")
-
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid state")
 
@@ -139,14 +167,29 @@ def google_callback(code: str, state: str, db: Session = Depends(get_db)):
 
     token_json = creds.to_json()
 
-    existing = db.query(CalendarConnection).filter(CalendarConnection.tenant_id == tenant.id, CalendarConnection.email == email).first()
+    existing = (
+        db.query(CalendarConnection)
+        .filter(
+            CalendarConnection.tenant_id == tenant.id,
+            CalendarConnection.email == email,
+            CalendarConnection.provider == calendar_provider
+        )
+        .first()
+    )
+
     if existing:
-    	existing.token_json = token_json
-    	existing.calendar_id = calendar_id
-    	db.add(existing)
+        existing.token_json = token_json
+        existing.calendar_id = calendar_id
+        db.add(existing)
     else:
-    	conn = CalendarConnection(tenant_id=tenant.id, email=email, calendar_id=calendar_id, token_json=token_json)
-    	db.add(conn)
+        conn = CalendarConnection(
+            tenant_id=tenant.id,
+            provider=calendar_provider,
+            email=email,
+            calendar_id=calendar_id,
+            token_json=token_json
+        )
+        db.add(conn)
 
     db.commit()
 
@@ -183,6 +226,59 @@ def test_create_event(email: str, db: Session = Depends(get_db)):
     created = service.events().insert(calendarId=conn.calendar_id, body=event).execute()
     return {"created": True, "eventId": created.get("id"), "htmlLink": created.get("htmlLink")}
 
+@app.get("/auth/microsoft/callback")
+def microsoft_callback(code: str, state: str, db: Session = Depends(get_db)):
+    try:
+        data = serializer.loads(state)
+
+        tenant_key = (data.get("tenant_key") or "default").strip()
+        provider_id = data.get("provider_id")
+        calendar_provider = (data.get("calendar_provider") or "microsoft").strip().lower()
+
+        tenant = db.query(Tenant).filter(Tenant.key == tenant_key).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid state")
+
+    adapter = get_calendar_adapter(calendar_provider)
+    result = adapter.handle_callback(code)
+
+    email = result["email"]
+    calendar_id = result["calendar_id"]
+    token_json = json.dumps(result["token_data"])
+
+    existing = (
+        db.query(CalendarConnection)
+        .filter(
+            CalendarConnection.tenant_id == tenant.id,
+            CalendarConnection.email == email,
+            CalendarConnection.provider == calendar_provider
+        )
+        .first()
+    )
+
+    if existing:
+        existing.token_json = token_json
+        existing.calendar_id = calendar_id
+        db.add(existing)
+    else:
+        conn = CalendarConnection(
+            tenant_id=tenant.id,
+            provider=calendar_provider,
+            email=email,
+            calendar_id=calendar_id,
+            token_json=token_json
+        )
+        db.add(conn)
+
+    db.commit()
+
+    return HTMLResponse(f"""
+    <h2>Microsoft ligado com sucesso ✅</h2>
+    <p>Email: <b>{email}</b></p>
+    <p>Tenant: <b>{tenant.key}</b></p>
+    """)
 def get_tenant(db: Session, x_tenant_key: str | None):
     key = (x_tenant_key or "default").strip()
     if key.lower() in ("", "string", "null", "none"):
@@ -482,9 +578,15 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
     if not provider.calendar_email:
         raise HTTPException(status_code=400, detail="Provider calendar not configured")
 
+    calendar_provider = (provider.calendar_provider or "").strip().lower()
+
+    if not calendar_provider:
+        raise HTTPException(status_code=400, detail="Provider calendar_provider not configured")
+
     conn = db.query(CalendarConnection).filter(
         CalendarConnection.tenant_id == tenant.id,
-        CalendarConnection.email == provider.calendar_email
+        CalendarConnection.email == provider.calendar_email,
+        CalendarConnection.provider == calendar_provider
     ).first()
 
     if not conn:
@@ -512,26 +614,18 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(contact)
 
-    # ligação ao google
-    creds = creds_from_token_json(conn.token_json)
-    service_api = calendar_service_from_creds(creds)
+    adapter = get_calendar_adapter(calendar_provider)
 
-    event_body = {
-        "summary": f"{service.name} - {payload.customer_name} - {provider.name}",
-        "description": "Booking via GadgetPrelude",
-        "start": {"dateTime": start.isoformat()},
-        "end": {"dateTime": end.isoformat()},
-        "attendees": [
-            {"email": payload.customer_email}
-        ]
-    }
-
-    created = service_api.events().insert(
-        calendarId=conn.calendar_id,
-        body=event_body,
-        sendUpdates="all"
-    ).execute()
-
+    created = adapter.create_event(
+        connection=conn,
+        provider=provider,
+        service_obj=service,
+        customer_name=payload.customer_name,
+        customer_email=payload.customer_email,
+        start_at=start,
+        end_at=end,
+    )
+    db.add(conn)
     ap = Appointment(
         tenant_id=tenant.id,
         contact_id=contact.id,
@@ -541,8 +635,8 @@ def public_book(payload: PublicBookingCreate, db: Session = Depends(get_db)):
         end_at=end,
         status="scheduled",
         public_token=public_token,
-        external_event_id=created.get("id"),
-        external_html_link=created.get("htmlLink")
+        external_event_id=created.get("external_event_id"),
+        external_html_link=created.get("external_html_link")
     )
 
     db.add(ap)
@@ -579,146 +673,421 @@ def to_utc_aware(dt: datetime) -> datetime:
 
 @app.get("/public/availability")
 def public_availability(
+    tenant_key: str,
+    provider_id: int,
     service_id: int,
-    date_str: str,
-    tenant_key: str = "default",
-    provider_id: int | None = None,
-    db: Session = Depends(get_db),
+    date: str,
+    db: Session = Depends(get_db)
 ):
     tenant = get_tenant(db, tenant_key)
 
-    service = db.get(Service, service_id)
-    if not service:
-        raise HTTPException(status_code=404, detail="Service not found")
+    provider = (
+        db.query(Provider)
+        .filter(
+            Provider.id == provider_id,
+            Provider.tenant_id == tenant.id
+        )
+        .first()
+    )
+    if not provider:
+        raise HTTPException(status_code=404, detail="Prestador não encontrado.")
 
-    if service.tenant_id != tenant.id:
-        raise HTTPException(status_code=403, detail="Service not in tenant")
+    service = (
+        db.query(Service)
+        .filter(
+            Service.id == service_id,
+            Service.tenant_id == tenant.id
+        )
+        .first()
+    )
+    if not service:
+        raise HTTPException(status_code=404, detail="Serviço não encontrado.")
+
+    relation = (
+        db.query(ProviderService)
+        .filter(
+            ProviderService.tenant_id == tenant.id,
+            ProviderService.provider_id == provider.id,
+            ProviderService.service_id == service.id
+        )
+        .first()
+    )
+    if not relation:
+        raise HTTPException(status_code=400, detail="Este prestador não executa esse serviço.")
 
     try:
-        target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="date must be in YYYY-MM-DD format")
+        target_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Data inválida. Usa YYYY-MM-DD.")
 
-    weekday = target_date.weekday()  # 0=segunda ... 6=domingo
+    weekday = target_date.weekday()  # segunda=0 ... domingo=6
 
-    availability = (
+    availability_rows = (
         db.query(ProviderAvailability)
-        .filter(ProviderAvailability.tenant_id == tenant.id)
-        .filter(ProviderAvailability.provider_id == provider_id)
-        .filter(ProviderAvailability.weekday == weekday)
-        .filter(ProviderAvailability.is_active == True)
+        .filter(
+            ProviderAvailability.tenant_id == tenant.id,
+            ProviderAvailability.provider_id == provider.id,
+            ProviderAvailability.weekday == weekday,
+            ProviderAvailability.is_active == True
+        )
+        .order_by(ProviderAvailability.start_time.asc())
+        .all()
+    )
+
+    if not availability_rows:
+        return {"slots": []}
+
+    day_start = datetime.combine(target_date, time.min).replace(tzinfo=timezone.utc)
+    day_end = datetime.combine(target_date, time.max).replace(tzinfo=timezone.utc)
+
+    existing_appointments = (
+        db.query(Appointment)
+        .filter(
+            Appointment.tenant_id == tenant.id,
+            Appointment.provider_id == provider.id,
+            Appointment.status.in_(["scheduled", "rescheduled"]),
+            Appointment.start_at >= day_start,
+            Appointment.start_at <= day_end
+        )
+        .order_by(Appointment.start_at.asc())
+        .all()
+    )
+
+    external_busy_intervals = []
+
+    if provider.check_external_calendar_conflicts:
+        calendar_provider = (provider.calendar_provider or "").strip().lower()
+        calendar_email = (provider.calendar_email or "").strip()
+
+        if calendar_provider and calendar_email:
+            conn = (
+                db.query(CalendarConnection)
+                .filter(
+                    CalendarConnection.tenant_id == tenant.id,
+                    CalendarConnection.email == calendar_email,
+                    CalendarConnection.provider == calendar_provider
+                )
+                .first()
+            )
+
+            if conn:
+                adapter = get_calendar_adapter(calendar_provider)
+
+                try:
+                    external_busy_intervals = adapter.get_busy_intervals(
+                        connection=conn,
+                        start_at=day_start,
+                        end_at=day_end,
+                    )
+                    db.add(conn)
+                    db.commit()
+                except HTTPException:
+                    # Se o provider não suportar ainda ou falhar, não partimos a página.
+                    external_busy_intervals = []
+                except Exception:
+                    external_busy_intervals = []
+
+    duration = timedelta(minutes=service.duration_minutes)
+    step = timedelta(minutes=30)
+
+    slots = []
+
+    for row in availability_rows:
+        window_start = datetime.combine(target_date, row.start_time).replace(tzinfo=timezone.utc)
+        window_end = datetime.combine(target_date, row.end_time).replace(tzinfo=timezone.utc)
+
+        current = window_start
+
+        while current + duration <= window_end:
+            slot_start = current
+            slot_end = current + duration
+
+            overlaps = False
+            for ap in existing_appointments:
+                ap_start = to_utc_aware(ap.start_at)
+                ap_end = to_utc_aware(ap.end_at)
+
+                if slot_start < ap_end and slot_end > ap_start:
+                    overlaps = True
+                    break
+
+            if not overlaps and external_busy_intervals:
+                for busy in external_busy_intervals:
+                    busy_start = datetime.fromisoformat(busy["start"].replace("Z", "+00:00"))
+                    busy_end = datetime.fromisoformat(busy["end"].replace("Z", "+00:00"))
+
+                    if slot_start < busy_end and slot_end > busy_start:
+                        overlaps = True
+                        break
+
+            if not overlaps:
+                slots.append(slot_start.isoformat())
+
+            current += step
+
+    return {"slots": slots}
+
+def get_onboarding_ops_for_tenant(db: Session, tenant_key: str):
+    tenant = get_tenant(db, tenant_key)
+
+    frontend_config = (
+        db.query(TenantFrontendConfig)
+        .filter(
+            TenantFrontendConfig.tenant_id == tenant.id,
+            TenantFrontendConfig.is_active == True
+        )
         .first()
     )
 
-    if not availability:
-        return {
-            "service_id": service.id,
-            "date": target_date.isoformat(),
-            "duration_minutes": service.duration_minutes,
-            "slots": [],
-        }
+    if not frontend_config or not frontend_config.texts_json:
+        return {"services": [], "providers": []}
 
-    day_start = datetime.combine(target_date, availability.start_time, tzinfo=timezone.utc)
-    day_end = datetime.combine(target_date, availability.end_time, tzinfo=timezone.utc)
-    
-    query = (
-        db.query(Appointment)
-        .filter(Appointment.tenant_id == tenant.id)
-        .filter(Appointment.status.in_(["scheduled", "rescheduled"]))
-        .filter(Appointment.start_at < day_end)
-        .filter(Appointment.end_at > day_start)
-    )
-
-    if provider_id is not None:
-        query = query.filter(Appointment.provider_id == provider_id)
-
-    existing = query.order_by(Appointment.start_at.asc()).all()
-
-    slots = []
-    current = day_start
-    slot_step = timedelta(minutes=30)
-    service_duration = timedelta(minutes=service.duration_minutes)
-
-    now_utc = datetime.now(timezone.utc)
-
-    while current + service_duration <= day_end:
-        candidate_end = current + service_duration
-
-        # não mostrar slots no passado (ao minuto)
-        if current <= now_utc:
-            current += slot_step
-            continue
-
-        overlaps = any(
-            to_utc_aware(ap.start_at) < candidate_end and to_utc_aware(ap.end_at) > current
-            for ap in existing
-        )
-
-        if not overlaps:
-            slots.append(current.isoformat())
-
-        current += slot_step
+    texts = frontend_config.texts_json or {}
+    onboarding_ops = texts.get("onboarding_ops") or {}
 
     return {
-        "service_id": service.id,
-        "date": target_date.isoformat(),
-        "duration_minutes": service.duration_minutes,
-        "slots": slots,
+        "services": onboarding_ops.get("services", []),
+        "providers": onboarding_ops.get("providers", [])
     }
 
 @app.get("/public/services")
-def public_services(
-    tenant_key: str = "default",
-    provider_id: int | None = None,
-    db: Session = Depends(get_db),
-):
+def public_services(tenant_key: str, provider_id: int, db: Session = Depends(get_db)):
     tenant = get_tenant(db, tenant_key)
 
-    query = (
-        db.query(Service)
-        .filter(Service.tenant_id == tenant.id)
+    provider = (
+        db.query(Provider)
+        .filter(
+            Provider.id == provider_id,
+            Provider.tenant_id == tenant.id
+        )
+        .first()
     )
 
-    if provider_id is not None:
-        query = (
-            query.join(ProviderService, ProviderService.service_id == Service.id)
-            .filter(ProviderService.tenant_id == tenant.id)
-            .filter(ProviderService.provider_id == provider_id)
-        )
+    if not provider:
+        raise HTTPException(status_code=404, detail="Prestador não encontrado.")
 
-    services = query.all()
+    rows = (
+        db.query(ProviderService, Service)
+        .join(Service, Service.id == ProviderService.service_id)
+        .filter(
+            ProviderService.tenant_id == tenant.id,
+            ProviderService.provider_id == provider.id,
+            Service.tenant_id == tenant.id
+        )
+        .order_by(Service.name.asc())
+        .all()
+    )
 
     return [
         {
-            "id": s.id,
-            "name": s.name,
-            "duration_minutes": s.duration_minutes,
+            "id": service.id,
+            "name": service.name,
+            "duration_minutes": service.duration_minutes
         }
-        for s in services
+        for _, service in rows
     ]
+
+def get_default_frontend_texts():
+    return {
+        "page_title": "Marcar serviço",
+        "subtitle": "Escolhe o serviço, a data e o horário.",
+        "provider_label": "Prestador",
+        "service_label": "Serviço",
+        "date_label": "Data",
+        "load_slots_button": "Ver horários disponíveis",
+        "name_label": "Nome",
+        "name_placeholder": "O seu nome",
+        "email_label": "Email",
+        "email_placeholder": "O seu email",
+        "book_button": "Confirmar marcação",
+        "footer_note": "Após a confirmação, receberás um convite por email.",
+        "success_message": "Marcação criada com sucesso.",
+        "manage_booking_link": "Gerir marcação",
+
+        "manage_page_title": "Gerir marcação",
+        "manage_page_subtitle": "Consulta os detalhes da tua marcação e gere-a sem login.",
+        "customer_label": "Cliente",
+        "manage_email_label": "Email",
+        "manage_service_label": "Serviço",
+        "manage_provider_label": "Prestador",
+        "start_at_label": "Início",
+        "status_label": "Estado",
+        "new_date_label": "Nova data",
+        "cancel_button": "Cancelar marcação",
+        "show_reschedule_button": "Reagendar marcação",
+        "confirm_reschedule_button": "Confirmar reagendamento",
+        "cancel_confirm_text": "Tens a certeza que queres cancelar esta marcação?",
+
+        "loading_slots_button": "A carregar horários...",
+        "loading_book_button": "A confirmar marcação...",
+        "loading_cancel_button": "A cancelar...",
+        "loading_reschedule_button": "A reagendar...",
+
+        "validation_select_slot": "Escolhe um horário.",
+        "validation_fill_name_email": "Preenche nome e email.",
+        "validation_select_provider": "Escolhe um prestador.",
+        "validation_select_service_date": "Escolhe um serviço e uma data.",
+        "validation_past_date": "Não podes escolher uma data no passado.",
+        "validation_select_new_date": "Escolhe uma nova data.",
+        "validation_select_new_slot": "Escolhe um novo horário.",
+
+        "error_load_page": "Erro ao carregar a página de marcação.",
+        "error_load_booking": "Erro ao carregar a marcação.",
+        "error_load_slots": "Erro ao carregar horários.",
+        "error_create_booking": "Erro ao criar marcação.",
+        "error_server_create_booking": "Erro de ligação ao servidor ao criar marcação.",
+        "error_server_cancel_booking": "Erro de ligação ao servidor ao cancelar marcação.",
+        "error_server_reschedule_booking": "Erro de ligação ao servidor ao reagendar marcação.",
+
+        "success_cancel_booking": "Marcação cancelada com sucesso.",
+        "success_reschedule_booking": "Marcação reagendada com sucesso."
+    }
+def get_default_frontend_theme():
+    return {
+        "primary_color": "#2563eb",
+        "background_color": "#f5f7fb",
+        "card_background_color": "#ffffff",
+        "text_color": "#1f2937"
+    }
 
 @app.get("/public/config")
 def public_config(tenant_key: str = "default", db: Session = Depends(get_db)):
     tenant = get_tenant(db, tenant_key)
-
-    conn = (
-        db.query(CalendarConnection)
-        .filter(CalendarConnection.tenant_id == tenant.id)
+    
+    # buscar config ativa
+    frontend_config = (
+        db.query(TenantFrontendConfig)
+        .filter(
+            TenantFrontendConfig.tenant_id == tenant.id,
+            TenantFrontendConfig.is_active == True
+        )
         .first()
     )
+
+    # defaults se não existir config
+    theme = frontend_config.theme_json if frontend_config else {}
+    texts = frontend_config.texts_json if frontend_config else {}
+    template_key = frontend_config.template_key if frontend_config else (tenant.template_key or "default")
+
+    #conn = (
+    #    db.query(CalendarConnection)
+    #    .filter(CalendarConnection.tenant_id == tenant.id)
+    #    .first()
+    #)
+    default_texts = get_default_frontend_texts()
+    default_theme = get_default_frontend_theme()
+
+    merged_texts = {**default_texts, **texts}
+    merged_theme = {**default_theme, **theme}
 
     return {
         "tenant_key": tenant.key,
         "business_name": tenant.name,
-        "primary_color": "#2563eb",
-        "logo_url": tenant.logo_url,
+        "template_key": template_key,
+
+        # branding
+        "logo_url": merged_theme.get("logo_url") or tenant.logo_url,
         "phone": tenant.phone,
         "instagram_url": tenant.instagram_url,
         "facebook_url": tenant.facebook_url,
         "website_url": tenant.website_url,
-        "template_key": tenant.template_key or "default",
-        "subtitle": "Escolhe o serviço, a data e o horário que te for mais conveniente.",
-        "success_message": "Marcação criada com sucesso. Verifica o teu email para o convite."
+
+        # cores dinâmicas
+        "primary_color": merged_theme.get("primary_color", "#2563eb"),
+        "background_color": merged_theme.get("background_color", "#f5f7fb"),
+        "card_background_color": merged_theme.get("card_background_color", "#ffffff"),
+        "text_color": merged_theme.get("text_color", "#1f2937"),
+
+        # textos principais
+        "subtitle": merged_texts.get("subtitle", "Escolhe o serviço, a data e o horário."),
+        "success_message": merged_texts.get("success_message", "Marcação criada com sucesso."),
+
+        # todos os textos
+        "texts": merged_texts
+    }
+
+@app.get("/admin/frontend-config")
+def admin_get_frontend_config(tenant_key: str, db: Session = Depends(get_db)):
+    tenant = get_tenant(db, tenant_key)
+    frontend_config = get_active_frontend_config(db, tenant.id)
+
+    if not frontend_config:
+        return {
+            "tenant_key": tenant.key,
+            "tenant_name": tenant.name,
+            "template_key": tenant.template_key or "default",
+            "theme_json": get_default_frontend_theme(),
+            "texts_json": get_default_frontend_texts(),
+            "phone": tenant.phone,
+            "instagram_url": tenant.instagram_url,
+            "facebook_url": tenant.facebook_url,
+            "website_url": tenant.website_url,
+            "is_active": True
+        }
+
+    return {
+        "tenant_key": tenant.key,
+        "tenant_name": tenant.name,
+        "template_key": frontend_config.template_key,
+        "theme_json": frontend_config.theme_json or {},
+        "texts_json": frontend_config.texts_json or {},
+        "phone": tenant.phone,
+        "instagram_url": tenant.instagram_url,
+        "facebook_url": tenant.facebook_url,
+        "website_url": tenant.website_url,
+        "is_active": frontend_config.is_active
+    }
+
+@app.post("/admin/frontend-config")
+def admin_save_frontend_config(payload: dict = Body(...), db: Session = Depends(get_db)):
+    tenant_key = payload.get("tenant_key")
+    template_key = payload.get("template_key", "default")
+    theme_json = payload.get("theme_json", {})
+    texts_json = payload.get("texts_json", {})
+    phone = payload.get("phone")
+    instagram_url = payload.get("instagram_url")
+    facebook_url = payload.get("facebook_url")
+    website_url = payload.get("website_url")
+
+    if not tenant_key:
+        raise HTTPException(status_code=400, detail="tenant_key é obrigatório.")
+
+    tenant = get_tenant(db, tenant_key)
+    tenant.phone = phone
+    tenant.instagram_url = instagram_url
+    tenant.facebook_url = facebook_url
+    tenant.website_url = website_url
+    frontend_config = get_active_frontend_config(db, tenant.id)
+
+    if frontend_config:
+        frontend_config.template_key = template_key
+        frontend_config.theme_json = theme_json
+        frontend_config.texts_json = texts_json
+    else:
+        frontend_config = TenantFrontendConfig(
+            tenant_id=tenant.id,
+            template_key=template_key,
+            theme_json=theme_json,
+            texts_json=texts_json,
+            is_active=True
+        )
+        db.add(frontend_config)
+
+    db.commit()
+    db.refresh(frontend_config)
+
+    return {
+        "message": "Configuração guardada com sucesso.",
+        "tenant_key": tenant.key,
+        "tenant_name": tenant.name,
+        "phone": tenant.phone,
+        "instagram_url": tenant.instagram_url,
+        "facebook_url": tenant.facebook_url,
+        "website_url": tenant.website_url,
+        "template_key": frontend_config.template_key,
+        "theme_json": frontend_config.theme_json,
+        "texts_json": frontend_config.texts_json,
+        "is_active": frontend_config.is_active
     }
 
 def send_telegram_message(text: str):
@@ -787,23 +1156,23 @@ def debug_telegram_tomorrow_summary(
     return {"ok": True, "message_sent": message, "telegram_result": result}
 
 @app.get("/public/providers")
-def public_providers(tenant_key: str = "default", db: Session = Depends(get_db)):
+def public_list_providers(tenant_key: str, db: Session = Depends(get_db)):
     tenant = get_tenant(db, tenant_key)
 
     providers = (
         db.query(Provider)
         .filter(Provider.tenant_id == tenant.id)
+        .order_by(Provider.name.asc())
         .all()
     )
 
     return [
         {
             "id": p.id,
-            "name": p.name,
+            "name": p.name
         }
         for p in providers
     ]
-
 @app.get("/public/booking-by-token")
 def public_booking_by_token(token: str, db: Session = Depends(get_db)):
     ap = (
@@ -861,23 +1230,28 @@ def public_cancel_by_token(payload: PublicCancelByToken, db: Session = Depends(g
     if not provider.calendar_email:
         raise HTTPException(status_code=400, detail="Provider calendar not configured")
 
+    calendar_provider = (provider.calendar_provider or "").strip().lower()
+
+    if not calendar_provider:
+        raise HTTPException(status_code=400, detail="Provider calendar_provider not configured")
+
     conn = (
         db.query(CalendarConnection)
         .filter(CalendarConnection.tenant_id == ap.tenant_id)
         .filter(CalendarConnection.email == provider.calendar_email)
+        .filter(CalendarConnection.provider == calendar_provider)
         .first()
     )
-
+    db.add(conn)
     if not conn:
         raise HTTPException(status_code=404, detail="No Google Calendar connection for this provider")
 
     if ap.external_event_id:
-        creds = creds_from_token_json(conn.token_json)
-        service_api = calendar_service_from_creds(creds)
-        service_api.events().delete(
-            calendarId=conn.calendar_id,
-            eventId=ap.external_event_id
-        ).execute()
+        adapter = get_calendar_adapter(calendar_provider)
+        adapter.delete_event(
+            connection=conn,
+            event_id=ap.external_event_id
+        )
 
     ap.status = "cancelled"
     db.add(ap)
@@ -918,10 +1292,16 @@ def public_reschedule_by_token(payload: PublicRescheduleByToken, db: Session = D
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
 
+    calendar_provider = (provider.calendar_provider or "").strip().lower()
+
+    if not calendar_provider:
+        raise HTTPException(status_code=400, detail="Provider calendar_provider not configured")
+
     conn = (
         db.query(CalendarConnection)
         .filter(CalendarConnection.tenant_id == ap.tenant_id)
         .filter(CalendarConnection.email == provider.calendar_email)
+        .filter(CalendarConnection.provider == calendar_provider)
         .first()
     )
 
@@ -935,26 +1315,22 @@ def public_reschedule_by_token(payload: PublicRescheduleByToken, db: Session = D
 
     new_end = new_start + timedelta(minutes=service.duration_minutes)
 
-    creds = creds_from_token_json(conn.token_json)
-    service_api = calendar_service_from_creds(creds)
-
     if not ap.external_event_id:
         raise HTTPException(status_code=400, detail="Booking has no external event id")
 
-    updated = service_api.events().patch(
-        calendarId=conn.calendar_id,
-        eventId=ap.external_event_id,
-        body={
-            "start": {"dateTime": new_start.isoformat()},
-            "end": {"dateTime": new_end.isoformat()},
-        }
-    ).execute()
+    adapter = get_calendar_adapter(calendar_provider)
 
+    updated = adapter.update_event(
+        connection=conn,
+        event_id=ap.external_event_id,
+        start_at=new_start,
+        end_at=new_end,
+    )
+    db.add(conn)
     ap.start_at = new_start
     ap.end_at = new_end
     ap.status = "rescheduled"
-    ap.external_html_link = updated.get("htmlLink") or ap.external_html_link
-
+    ap.external_html_link = updated.get("external_html_link") or ap.external_html_link
     db.add(ap)
     db.commit()
     db.refresh(ap)
@@ -1053,3 +1429,670 @@ def debug_email_reminder(appointment_id: int, db: Session = Depends(get_db)):
         "message": "Reminder email sent",
         "to": contact.email,
     }
+
+def get_active_frontend_config(db: Session, tenant_id: int):
+    return (
+        db.query(TenantFrontendConfig)
+        .filter(
+            TenantFrontendConfig.tenant_id == tenant_id,
+            TenantFrontendConfig.is_active == True
+        )
+        .first()
+    )
+
+@app.get("/admin/tenants")
+def admin_list_tenants(db: Session = Depends(get_db)):
+    tenants = db.query(Tenant).order_by(Tenant.name.asc()).all()
+
+    return [
+        {
+            "key": tenant.key,
+            "name": tenant.name
+        }
+        for tenant in tenants
+    ]
+@app.get("/admin/services")
+def admin_list_services(tenant_key: str, db: Session = Depends(get_db)):
+    tenant = get_tenant(db, tenant_key)
+
+    services = (
+        db.query(Service)
+        .filter(Service.tenant_id == tenant.id)
+        .order_by(Service.name.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": service.id,
+            "name": service.name,
+            "duration_minutes": service.duration_minutes
+        }
+        for service in services
+    ]
+@app.post("/admin/services")
+def admin_save_services(payload: dict = Body(...), db: Session = Depends(get_db)):
+    tenant_key = payload.get("tenant_key")
+    services = payload.get("services", [])
+
+    if not tenant_key:
+        raise HTTPException(status_code=400, detail="tenant_key é obrigatório.")
+
+    if not isinstance(services, list):
+        raise HTTPException(status_code=400, detail="services deve ser uma lista.")
+
+    tenant = get_tenant(db, tenant_key)
+
+    saved_ids = []
+
+    for item in services:
+        service_id = item.get("id")
+        name = (item.get("name") or "").strip()
+        duration_minutes = item.get("duration_minutes")
+
+        if not name:
+            continue
+
+        if duration_minutes is None:
+            duration_minutes = 30
+
+        if service_id:
+            service = (
+                db.query(Service)
+                .filter(
+                    Service.id == service_id,
+                    Service.tenant_id == tenant.id
+                )
+                .first()
+            )
+
+            if service:
+                service.name = name
+                service.duration_minutes = int(duration_minutes)
+                db.add(service)
+                db.flush()
+                saved_ids.append(service.id)
+                continue
+
+        service = Service(
+            tenant_id=tenant.id,
+            name=name,
+            duration_minutes=int(duration_minutes)
+        )
+        db.add(service)
+        db.flush()
+        saved_ids.append(service.id)
+
+    db.commit()
+
+    saved_services = (
+        db.query(Service)
+        .filter(Service.tenant_id == tenant.id)
+        .order_by(Service.name.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": service.id,
+            "name": service.name,
+            "duration_minutes": service.duration_minutes
+        }
+        for service in saved_services
+    ]
+@app.get("/admin/providers")
+def admin_list_providers(tenant_key: str, db: Session = Depends(get_db)):
+    tenant = get_tenant(db, tenant_key)
+
+    providers = (
+        db.query(Provider)
+        .filter(Provider.tenant_id == tenant.id)
+        .order_by(Provider.name.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": provider.id,
+            "name": provider.name,
+            "calendar_email": provider.calendar_email,
+            "calendar_provider": provider.calendar_provider,
+            "check_external_calendar_conflicts": provider.check_external_calendar_conflicts
+        }
+        for provider in providers
+    ]
+
+@app.post("/admin/providers")
+def admin_save_providers(payload: dict = Body(...), db: Session = Depends(get_db)):
+    tenant_key = payload.get("tenant_key")
+    providers = payload.get("providers", [])
+
+    if not tenant_key:
+        raise HTTPException(status_code=400, detail="tenant_key é obrigatório.")
+
+    if not isinstance(providers, list):
+        raise HTTPException(status_code=400, detail="providers deve ser uma lista.")
+
+    tenant = get_tenant(db, tenant_key)
+
+    for item in providers:
+        provider_id = item.get("id")
+        name = (item.get("name") or "").strip()
+        calendar_email = (item.get("calendar_email") or "").strip() or None
+        calendar_provider = (item.get("calendar_provider") or "").strip().lower() or None
+        check_external_calendar_conflicts = bool(item.get("check_external_calendar_conflicts", False))
+
+        if not name:
+            continue
+
+        if provider_id:
+            provider = (
+                db.query(Provider)
+                .filter(
+                    Provider.id == provider_id,
+                    Provider.tenant_id == tenant.id
+                )
+                .first()
+            )
+
+            if provider:
+                provider.name = name
+                provider.calendar_email = calendar_email
+                provider.calendar_provider = calendar_provider
+                provider.check_external_calendar_conflicts = check_external_calendar_conflicts
+                db.add(provider)
+                db.flush()
+                continue
+
+        provider = Provider(
+            provider = Provider(
+            tenant_id=tenant.id,
+            name=name,
+            calendar_email=calendar_email,
+            calendar_provider=calendar_provider,
+            check_external_calendar_conflicts=check_external_calendar_conflicts
+            )
+        )
+        db.add(provider)
+        db.flush()
+
+    db.commit()
+
+    saved_providers = (
+        db.query(Provider)
+        .filter(Provider.tenant_id == tenant.id)
+        .order_by(Provider.name.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": provider.id,
+            "name": provider.name,
+            "calendar_email": provider.calendar_email,
+            "calendar_provider": provider.calendar_provider,
+            "check_external_calendar_conflicts": provider.check_external_calendar_conflicts
+        }
+        for provider in saved_providers
+    ]
+@app.get("/admin/provider-availability")
+def admin_get_provider_availability(
+    tenant_key: str,
+    provider_id: int,
+    db: Session = Depends(get_db)
+):
+    tenant = get_tenant(db, tenant_key)
+
+    rows = (
+        db.query(ProviderAvailability)
+        .filter(
+            ProviderAvailability.tenant_id == tenant.id,
+            ProviderAvailability.provider_id == provider_id
+        )
+        .order_by(ProviderAvailability.weekday.asc(), ProviderAvailability.start_time.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": row.id,
+            "weekday": row.weekday,
+            "start_time": row.start_time.strftime("%H:%M"),
+            "end_time": row.end_time.strftime("%H:%M"),
+            "is_active": row.is_active
+        }
+        for row in rows
+    ]
+@app.post("/admin/provider-availability")
+def admin_save_provider_availability(payload: dict = Body(...), db: Session = Depends(get_db)):
+    tenant_key = payload.get("tenant_key")
+    provider_id = payload.get("provider_id")
+    availability = payload.get("availability", [])
+
+    if not tenant_key:
+        raise HTTPException(status_code=400, detail="tenant_key é obrigatório.")
+
+    if not provider_id:
+        raise HTTPException(status_code=400, detail="provider_id é obrigatório.")
+
+    if not isinstance(availability, list):
+        raise HTTPException(status_code=400, detail="availability deve ser uma lista.")
+
+    tenant = get_tenant(db, tenant_key)
+
+    provider = (
+        db.query(Provider)
+        .filter(
+            Provider.id == provider_id,
+            Provider.tenant_id == tenant.id
+        )
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(status_code=404, detail="Prestador não encontrado.")
+
+    for item in availability:
+        row_id = item.get("id")
+        weekday = item.get("weekday")
+        start_time_str = item.get("start_time")
+        end_time_str = item.get("end_time")
+        is_active = item.get("is_active", True)
+
+        if weekday is None or not start_time_str or not end_time_str:
+            continue
+
+        try:
+            start_time_obj = datetime.strptime(start_time_str, "%H:%M").time()
+            end_time_obj = datetime.strptime(end_time_str, "%H:%M").time()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Formato de hora inválido. Usa HH:MM.")
+
+        if row_id:
+            row = (
+                db.query(ProviderAvailability)
+                .filter(
+                    ProviderAvailability.id == row_id,
+                    ProviderAvailability.tenant_id == tenant.id,
+                    ProviderAvailability.provider_id == provider.id
+                )
+                .first()
+            )
+
+            if row:
+                row.weekday = int(weekday)
+                row.start_time = start_time_obj
+                row.end_time = end_time_obj
+                row.is_active = bool(is_active)
+                db.add(row)
+                db.flush()
+                continue
+
+        if bool(is_active):
+            row = ProviderAvailability(
+                tenant_id=tenant.id,
+                provider_id=provider.id,
+                weekday=int(weekday),
+                start_time=start_time_obj,
+                end_time=end_time_obj,
+                is_active=True
+            )
+            db.add(row)
+            db.flush()
+
+    db.commit()
+
+    rows = (
+        db.query(ProviderAvailability)
+        .filter(
+            ProviderAvailability.tenant_id == tenant.id,
+            ProviderAvailability.provider_id == provider.id
+        )
+        .order_by(ProviderAvailability.weekday.asc(), ProviderAvailability.start_time.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": row.id,
+            "weekday": row.weekday,
+            "start_time": row.start_time.strftime("%H:%M"),
+            "end_time": row.end_time.strftime("%H:%M"),
+            "is_active": row.is_active
+        }
+        for row in rows
+    ]
+@app.get("/admin/provider-services")
+def admin_get_provider_services(tenant_key: str, db: Session = Depends(get_db)):
+    tenant = get_tenant(db, tenant_key)
+
+    rows = (
+        db.query(ProviderService)
+        .filter(ProviderService.tenant_id == tenant.id)
+        .order_by(ProviderService.provider_id.asc(), ProviderService.service_id.asc())
+        .all()
+    )
+
+    grouped = {}
+
+    for row in rows:
+        if row.provider_id not in grouped:
+            grouped[row.provider_id] = {
+                "provider_id": row.provider_id,
+                "service_ids": []
+            }
+        grouped[row.provider_id]["service_ids"].append(row.service_id)
+
+    return list(grouped.values())
+
+
+@app.post("/admin/provider-services")
+def admin_save_provider_services(payload: dict = Body(...), db: Session = Depends(get_db)):
+    tenant_key = payload.get("tenant_key")
+    relations = payload.get("relations", [])
+
+    if not tenant_key:
+        raise HTTPException(status_code=400, detail="tenant_key é obrigatório.")
+
+    if not isinstance(relations, list):
+        raise HTTPException(status_code=400, detail="relations deve ser uma lista.")
+
+    tenant = get_tenant(db, tenant_key)
+
+    for item in relations:
+        provider_id = item.get("provider_id")
+        service_ids = item.get("service_ids", [])
+
+        if not provider_id:
+            continue
+
+        if not isinstance(service_ids, list):
+            continue
+
+        provider = (
+            db.query(Provider)
+            .filter(
+                Provider.id == provider_id,
+                Provider.tenant_id == tenant.id
+            )
+            .first()
+        )
+        if not provider:
+            continue
+
+        existing_rows = (
+            db.query(ProviderService)
+            .filter(
+                ProviderService.tenant_id == tenant.id,
+                ProviderService.provider_id == provider_id
+            )
+            .all()
+        )
+
+        existing_service_ids = {row.service_id for row in existing_rows}
+        new_service_ids = {int(sid) for sid in service_ids}
+
+        for service_id in new_service_ids - existing_service_ids:
+            service = (
+                db.query(Service)
+                .filter(
+                    Service.id == service_id,
+                    Service.tenant_id == tenant.id
+                )
+                .first()
+            )
+            if not service:
+                continue
+
+            row = ProviderService(
+                tenant_id=tenant.id,
+                provider_id=provider_id,
+                service_id=service_id
+            )
+            db.add(row)
+
+        for row in existing_rows:
+            if row.service_id not in new_service_ids:
+                db.delete(row)
+
+    db.commit()
+
+    rows = (
+        db.query(ProviderService)
+        .filter(ProviderService.tenant_id == tenant.id)
+        .order_by(ProviderService.provider_id.asc(), ProviderService.service_id.asc())
+        .all()
+    )
+
+    grouped = {}
+
+    for row in rows:
+        if row.provider_id not in grouped:
+            grouped[row.provider_id] = {
+                "provider_id": row.provider_id,
+                "service_ids": []
+            }
+        grouped[row.provider_id]["service_ids"].append(row.service_id)
+
+    return list(grouped.values())
+@app.get("/admin/provider-calendar-status")
+def admin_provider_calendar_status(tenant_key: str, db: Session = Depends(get_db)):
+    tenant = get_tenant(db, tenant_key)
+
+    providers = (
+        db.query(Provider)
+        .filter(Provider.tenant_id == tenant.id)
+        .order_by(Provider.name.asc())
+        .all()
+    )
+
+    connections = (
+        db.query(CalendarConnection)
+        .filter(CalendarConnection.tenant_id == tenant.id)
+        .all()
+    )
+
+    connection_map = {}
+    for conn in connections:
+        provider_key = (conn.provider or "").strip().lower()
+        email_key = (conn.email or "").strip().lower()
+        connection_map[(provider_key, email_key)] = conn
+
+    result = []
+
+    for provider in providers:
+        calendar_email = (provider.calendar_email or "").strip()
+        calendar_provider = (provider.calendar_provider or "").strip().lower()
+
+        status = "not_configured"
+        status_label = "Não configurado"
+        connected_email = None
+        auth_url = None
+
+        if not calendar_email:
+            status = "missing_email"
+            status_label = "Sem email"
+        elif not calendar_provider:
+            status = "missing_provider"
+            status_label = "Sem provider"
+        else:
+            conn = connection_map.get((calendar_provider, calendar_email.lower()))
+
+            if conn:
+                connected_email = conn.email
+
+                expected_email = (calendar_email or "").strip().lower()
+                actual_email = (conn.email or "").strip().lower()
+
+                if expected_email != actual_email:
+                    status = "email_mismatch"
+                    status_label = "Email diferente"
+                elif conn.last_test_status == "reauth_required":
+                    status = "reauth_required"
+                    status_label = "Reautenticação necessária"
+                elif conn.last_test_status == "invalid_credentials":
+                    status = "reauth_required"
+                    status_label = "Reautenticação necessária"
+                elif conn.last_test_status == "test_failed":
+                    status = "test_failed"
+                    status_label = "Teste falhou"
+                else:
+                    status = "connected"
+                    status_label = "Ligado"
+            else:
+                status = "pending_auth"
+                status_label = "Por autenticar"
+            
+            if calendar_provider in ("google", "microsoft"):
+                auth_url = f"/auth/calendar/start?tenant_key={tenant.key}&provider_id={provider.id}"
+
+        result.append({
+            "provider_id": provider.id,
+            "provider_name": provider.name,
+            "calendar_email": provider.calendar_email,
+            "calendar_provider": provider.calendar_provider,
+            "status": status,
+            "status_label": status_label,
+            "connected_email": connected_email,
+            "email_matches": (
+                ((provider.calendar_email or "").strip().lower() == (connected_email or "").strip().lower())
+                if connected_email else None
+            ),
+            "last_test_at": conn.last_test_at.isoformat() if conn and conn.last_test_at else None,
+            "last_test_status": conn.last_test_status if conn else None,
+            "last_test_message": conn.last_test_message if conn else None,
+            "auth_url": auth_url
+        })
+
+    return result
+
+@app.get("/admin/test-calendar-connection")
+def admin_test_calendar_connection(
+    tenant_key: str,
+    provider_id: int,
+    db: Session = Depends(get_db)
+):
+    tenant = get_tenant(db, tenant_key)
+
+    provider = (
+        db.query(Provider)
+        .filter(
+            Provider.id == provider_id,
+            Provider.tenant_id == tenant.id
+        )
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(status_code=404, detail="Prestador não encontrado.")
+
+    calendar_email = (provider.calendar_email or "").strip()
+    calendar_provider = (provider.calendar_provider or "").strip().lower()
+
+    if not calendar_email:
+        raise HTTPException(status_code=400, detail="Prestador sem calendar_email configurado.")
+
+    if not calendar_provider:
+        raise HTTPException(status_code=400, detail="Prestador sem calendar_provider configurado.")
+
+    conn = (
+        db.query(CalendarConnection)
+        .filter(
+            CalendarConnection.tenant_id == tenant.id,
+            CalendarConnection.email == calendar_email,
+            CalendarConnection.provider == calendar_provider
+        )
+        .first()
+    )
+
+    if not conn:
+        raise HTTPException(status_code=404, detail="Ligação de calendário não encontrada para este prestador.")
+
+    adapter = get_calendar_adapter(calendar_provider)
+
+    try:
+        test_result = adapter.test_connection(conn)
+
+        conn.last_test_at = datetime.now(timezone.utc)
+        conn.last_test_status = "connected"
+        conn.last_test_message = f"Ligação {calendar_provider.capitalize()} Calendar OK."
+        db.add(conn)
+        db.commit()
+
+        return {
+            "ok": True,
+            "status": "connected",
+            "provider_id": provider.id,
+            "provider_name": provider.name,
+            "calendar_provider": calendar_provider,
+            "calendar_email": calendar_email,
+            "calendar_id": conn.calendar_id,
+            "message": f"Ligação {calendar_provider.capitalize()} Calendar OK.",
+            "calendar_summary": test_result.get("summary") if isinstance(test_result, dict) else None
+        }
+
+    except HTTPException as e:
+        conn.last_test_at = datetime.now(timezone.utc)
+
+        detail = e.detail
+        if isinstance(detail, dict):
+            conn.last_test_status = detail.get("status", "test_failed")
+            conn.last_test_message = detail.get("message", "Erro ao testar ligação.")
+            db.add(conn)
+            db.commit()
+            raise
+
+        conn.last_test_status = "test_failed"
+        conn.last_test_message = str(detail)
+        db.add(conn)
+        db.commit()
+        raise
+
+    except Exception as e:
+        error_text = str(e).lower()
+        conn.last_test_at = datetime.now(timezone.utc)
+
+        if "invalid_grant" in error_text or "expired or revoked" in error_text or "token has been expired or revoked" in error_text:
+            conn.last_test_status = "reauth_required"
+            conn.last_test_message = "Ligação expirada ou revogada. É necessário reautenticar."
+            db.add(conn)
+            db.commit()
+
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "ok": False,
+                    "status": "reauth_required",
+                    "message": "Ligação expirada ou revogada. É necessário reautenticar."
+                }
+            )
+
+        if "unauthorized" in error_text or "invalid credentials" in error_text:
+            conn.last_test_status = "invalid_credentials"
+            conn.last_test_message = "Credenciais inválidas. É necessário autenticar novamente."
+            db.add(conn)
+            db.commit()
+
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "ok": False,
+                    "status": "invalid_credentials",
+                    "message": "Credenciais inválidas. É necessário autenticar novamente."
+                }
+            )
+
+        conn.last_test_status = "test_failed"
+        conn.last_test_message = f"Erro ao testar {calendar_provider.capitalize()} Calendar: {str(e)}"
+        db.add(conn)
+        db.commit()
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "ok": False,
+                "status": "test_failed",
+                "message": f"Erro ao testar {calendar_provider.capitalize()} Calendar.",
+                "technical_error": str(e)
+            }
+        )

@@ -1,0 +1,2200 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gestão de Clientes</title>
+  <style>
+    :root {
+      --brand-color: #2563eb;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 20px 60px;
+    }
+
+    .hero {
+      margin-bottom: 24px;
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 2rem;
+    }
+
+    .hero p {
+      margin: 0;
+      color: #6b7280;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .tab {
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      background: #e5e7eb;
+      color: #111827;
+    }
+
+    .tab.active {
+      background: var(--brand-color);
+      color: #fff;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.06);
+      margin-bottom: 20px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.9rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px 14px;
+      border: 1px solid #d1d5db;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-family: inherit;
+    }
+
+    textarea {
+      min-height: 360px;
+      resize: vertical;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    button {
+      border: none;
+      border-radius: 12px;
+      padding: 12px 18px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--brand-color);
+      color: #fff;
+    }
+
+    button.secondary {
+      background: #111827;
+    }
+
+    #message {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      display: none;
+    }
+
+    #message.success {
+      display: block;
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    #message.error {
+      display: block;
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .checklist label {
+      display: block;
+      margin-bottom: 10px;
+      font-weight: 500;
+    }
+
+    .checklist input[type="checkbox"] {
+      width: auto;
+      margin-right: 8px;
+    }
+
+    h3 {
+      margin-top: 0;
+      margin-bottom: 18px;
+    }
+
+    @media (max-width: 900px) {
+      .row {
+        grid-template-columns: 1fr;
+      }
+
+      textarea {
+        min-height: 260px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="hero">
+      <h1>Gestão de Clientes</h1>
+      <p>Editar template, serviços, prestadores e textos por cliente.</p>
+    </div>
+
+    <div class="tabs">
+        <button type="button" class="tab active" data-tab="general">Geral</button>
+        <button type="button" class="tab" data-tab="branding">Branding</button>
+        <button type="button" class="tab" data-tab="texts">Textos</button>
+        <button type="button" class="tab" data-tab="operations">Operação</button>
+        <button type="button" class="tab" data-tab="preview">Preview</button>
+        <button type="button" class="tab" data-tab="checklist">Checklist</button>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div class="field">
+          <label for="tenantKey">Tenant</label>
+          <select id="tenantKey"></select>
+        </div>
+
+        <div class="field">
+            <label for="templateKey">Template atual</label>
+            <select id="templateKey" disabled style="background:#f3f4f6; color:#6b7280; cursor:not-allowed;">
+                <option value="default">default</option>
+                <option value="template_2">template_2</option>
+            </select>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="loadBtn" type="button">Carregar configuração</button>
+        <button id="saveBtn" type="button" class="secondary">Guardar configuração</button>
+      </div>
+
+      <div id="message"></div>
+    </div>
+
+    <div id="tab-general" class="tab-content">
+      <div class="card">
+        <h3>Geral</h3>
+
+        <div class="row">
+          <div class="field">
+            <label for="businessNameInput">Nome da empresa</label>
+            <input id="businessNameInput" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="tenantKeyInputManual">Tenant key</label>
+            <input id="tenantKeyInputManual" type="text" disabled />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="sectorInput">Setor</label>
+            <select id="sectorInput">
+              <option value="barbershop">Barbearia</option>
+              <option value="massage">Massagens</option>
+              <option value="other">Outro</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="templateKeyInput">Template</label>
+            <select id="templateKeyInput">
+              <option value="default">default</option>
+              <option value="template_2">template_2</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+            <div class="field">
+                <label for="onboardingStatusInput">Estado do onboarding</label>
+                <select id="onboardingStatusInput">
+                <option value="not_started">Não iniciado</option>
+                <option value="in_progress">Em curso</option>
+                <option value="waiting_client">À espera do cliente</option>
+                <option value="done">Concluído</option>
+                </select>
+            </div>
+
+            <div class="field">
+                <label for="internalNotesInput">Notas internas</label>
+                <textarea id="internalNotesInput" style="min-height: 120px;"></textarea>
+            </div>
+            </div>
+      </div>
+    </div>
+
+    <div id="tab-branding" class="tab-content hidden">
+      <div class="card">
+        <h3>Branding</h3>
+
+        <div class="field">
+          <label for="logoUpload">Logótipo</label>
+          <input type="file" id="logoUpload" accept="image/*" />
+        </div>
+
+        <div class="actions">
+          <button id="uploadLogoBtn" type="button">Fazer upload</button>
+        </div>
+
+        <div class="field">
+          <img id="logoPreview" style="max-height: 60px; margin-top: 10px;" />
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="primaryColorInput">Cor principal</label>
+            <input id="primaryColorInput" type="color" />
+          </div>
+
+          <div class="field">
+            <label for="backgroundColorInput">Cor fundo</label>
+            <input id="backgroundColorInput" type="color" />
+          </div>
+
+          <div class="field">
+            <label for="cardColorInput">Cor card</label>
+            <input id="cardColorInput" type="color" />
+          </div>
+
+          <div class="field">
+            <label for="textColorInput">Cor texto</label>
+            <input id="textColorInput" type="color" />
+          </div>
+        </div>
+        <div class="row">
+            <div class="field">
+                <label for="phoneInput">Telefone</label>
+                <input id="phoneInput" type="text" />
+            </div>
+
+            <div class="field">
+                <label for="instagramInput">Instagram URL</label>
+                <input id="instagramInput" type="text" />
+            </div>
+            </div>
+
+            <div class="row">
+            <div class="field">
+                <label for="facebookInput">Facebook URL</label>
+                <input id="facebookInput" type="text" />
+            </div>
+
+            <div class="field">
+                <label for="websiteInput">Website URL</label>
+                <input id="websiteInput" type="text" />
+            </div>
+            </div>
+      </div>
+    </div>
+
+    <div id="tab-texts" class="tab-content hidden">
+      <div class="card">
+        <h3>Textos principais</h3>
+
+        <div class="row">
+          <div class="field">
+            <label for="pageTitleInput">Título booking</label>
+            <input id="pageTitleInput" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="subtitleInput">Subtítulo booking</label>
+            <input id="subtitleInput" type="text" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="providerLabelInput">Label prestador</label>
+            <input id="providerLabelInput" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="serviceLabelInput">Label serviço</label>
+            <input id="serviceLabelInput" type="text" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="dateLabelInput">Label data</label>
+            <input id="dateLabelInput" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="nameLabelInput">Label nome</label>
+            <input id="nameLabelInput" type="text" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="emailLabelInput">Label email</label>
+            <input id="emailLabelInput" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="bookButtonInput">Texto botão marcar</label>
+            <input id="bookButtonInput" type="text" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="footerNoteInput">Texto rodapé booking</label>
+          <input id="footerNoteInput" type="text" />
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Textos da página Manage</h3>
+
+        <div class="row">
+          <div class="field">
+            <label for="managePageTitleInput">Título manage</label>
+            <input id="managePageTitleInput" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="manageProviderLabelInput">Label prestador manage</label>
+            <input id="manageProviderLabelInput" type="text" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="cancelButtonInput">Botão cancelar</label>
+            <input id="cancelButtonInput" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="showRescheduleButtonInput">Botão reagendar</label>
+            <input id="showRescheduleButtonInput" type="text" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Textos adicionais</h3>
+
+            <div class="grid-2">
+                <div class="field">
+                <label for="textSuccessMessage">Mensagem de sucesso</label>
+                <input id="textSuccessMessage" type="text" />
+                </div>
+
+                <div class="field">
+                <label for="textLoadSlotsButton">Texto botão horários</label>
+                <input id="textLoadSlotsButton" type="text" />
+                </div>
+
+                <div class="field">
+                <label for="textChooseProviderFirst">Texto escolher primeiro prestador</label>
+                <input id="textChooseProviderFirst" type="text" />
+                </div>
+
+                <div class="field">
+                <label for="textChooseService">Texto escolher serviço</label>
+                <input id="textChooseService" type="text" />
+                </div>
+
+                <div class="field">
+                <label for="textNoSlots">Texto sem horários disponíveis</label>
+                <input id="textNoSlots" type="text" />
+                </div>
+
+                <div class="field">
+                <label for="textErrorLoadPage">Erro ao carregar página</label>
+                <input id="textErrorLoadPage" type="text" />
+                </div>
+
+                <div class="field">
+                <label for="textValidationSelectProvider">Validação selecionar prestador</label>
+                <input id="textValidationSelectProvider" type="text" />
+                </div>
+
+                <div class="field">
+                <label for="textValidationSelectServiceDate">Validação selecionar serviço e data</label>
+                <input id="textValidationSelectServiceDate" type="text" />
+                </div>
+
+                <div class="field">
+                <label for="textValidationPastDate">Validação data passada</label>
+                <input id="textValidationPastDate" type="text" />
+                </div>
+
+                <div class="field">
+                <label for="textManageSuccessCancel">Mensagem sucesso cancelamento</label>
+                <input id="textManageSuccessCancel" type="text" />
+                </div>
+
+                <div class="field">
+                <label for="textManageSuccessReschedule">Mensagem sucesso reagendamento</label>
+                <input id="textManageSuccessReschedule" type="text" />
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="tab-operations" class="tab-content hidden">
+        
+        <div class="card">
+            <h3>Prestadores</h3>
+
+            <div id="providersTableWrap" style="margin-top: 12px;"></div>
+
+            <div class="actions" style="margin-top: 16px;">
+                <button id="addProviderRowBtn" type="button">Adicionar prestador</button>
+                <button id="saveProvidersDbBtn" type="button">Guardar prestadores</button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>Serviços</h3>
+            
+            <div id="servicesTableWrap" style="margin-top: 12px;"></div>
+
+            <div class="actions" style="margin-top: 16px;">
+                <button id="addServiceRowBtn" type="button">Adicionar serviço</button>
+                <button id="saveServicesDbBtn" type="button">Guardar serviços</button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>Serviços por prestador</h3>
+            <p style="margin:6px 0 14px 0; color:#6b7280;">
+                Seleciona os serviços que este prestador pode executar.
+            </p>
+            <div class="field">
+                <label for="providerServicesSelect">Selecionar prestador</label>
+                <select id="providerServicesSelect"></select>
+            </div>
+
+            <div id="providerServicesChecklistWrap" style="margin-top: 12px;"></div>
+
+            <div class="actions" style="margin-top: 16px;">
+                <button id="saveProviderServicesBtn" type="button">Guardar serviços do prestador</button>
+            </div>
+        </div>
+        <div class="card">
+            <h3>Horários</h3>
+
+            <div class="field">
+                <label for="providerAvailabilitySelect">Selecionar prestador</label>
+                <select id="providerAvailabilitySelect"></select>
+            </div>
+
+            <div id="providerAvailabilityTableWrap" style="margin-top: 12px;"></div>
+
+            <div class="actions" style="margin-top: 16px;">
+                <button id="loadProviderAvailabilityBtn" type="button">Carregar horários</button>
+                <button id="saveProviderAvailabilityBtn" type="button">Guardar horários</button>
+            </div>
+        </div>
+        <div class="card">
+            <h3>Ligações de calendário</h3>
+
+            <div class="actions">
+                <button id="loadProviderCalendarStatusBtn" type="button">Carregar estado</button>
+            </div>
+
+            <div id="providerCalendarStatusTableWrap" style="margin-top: 16px;"></div>
+        </div>
+    </div>
+    <div id="tab-preview" class="tab-content hidden">
+      <div class="card">
+        <h3>Preview</h3>
+
+        <div class="row">
+          <div class="field">
+            <label for="previewMode">Modo de preview</label>
+            <select id="previewMode">
+              <option value="booking">Booking</option>
+              <option value="manage">Manage</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Preview do frontend</label>
+          <iframe
+            id="previewFrame"
+            style="
+              width: 100%;
+              height: 700px;
+              border: 1px solid #e5e7eb;
+              border-radius: 12px;
+              background: #fff;
+            "
+          ></iframe>
+        </div>
+
+        <div class="actions">
+          <button id="refreshPreviewBtn" type="button">Atualizar preview</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-checklist" class="tab-content hidden">
+      <div class="card checklist">
+        <h3>Checklist de onboarding</h3>
+
+        <label><input type="checkbox" id="chk_branding" /> Branding feito</label>
+        <label><input type="checkbox" id="chk_texts" /> Textos revistos</label>
+        <label><input type="checkbox" id="chk_services" /> Serviços criados</label>
+        <label><input type="checkbox" id="chk_providers" /> Prestadores criados</label>
+        <label><input type="checkbox" id="chk_schedule" /> Horários configurados</label>
+        <label><input type="checkbox" id="chk_calendar" /> Calendar ligado</label>
+        <label><input type="checkbox" id="chk_test" /> Teste completo feito</label>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function getApiBase() {
+        const host = window.location.hostname;
+
+        if (host === "127.0.0.1" || host === "localhost") {
+        return "http://127.0.0.1:8000";
+        }
+
+        return "https://gadgetprelude.onrender.com";
+    }
+
+    const API_BASE = getApiBase();
+
+    const tabs = document.querySelectorAll(".tab");
+    const tabContents = document.querySelectorAll(".tab-content");
+
+    const tenantKeySelect = document.getElementById("tenantKey");
+    const templateKeySelect = document.getElementById("templateKey");
+    const loadBtn = document.getElementById("loadBtn");
+    const saveBtn = document.getElementById("saveBtn");
+    const messageDiv = document.getElementById("message");
+
+    const previewFrame = document.getElementById("previewFrame");
+    const refreshPreviewBtn = document.getElementById("refreshPreviewBtn");
+    const previewModeSelect = document.getElementById("previewMode");
+
+    const pageTitleInput = document.getElementById("pageTitleInput");
+    const subtitleInput = document.getElementById("subtitleInput");
+    const providerLabelInput = document.getElementById("providerLabelInput");
+    const serviceLabelInput = document.getElementById("serviceLabelInput");
+    const dateLabelInput = document.getElementById("dateLabelInput");
+    const nameLabelInput = document.getElementById("nameLabelInput");
+    const emailLabelInput = document.getElementById("emailLabelInput");
+    const bookButtonInput = document.getElementById("bookButtonInput");
+    const footerNoteInput = document.getElementById("footerNoteInput");
+
+    const managePageTitleInput = document.getElementById("managePageTitleInput");
+    const manageProviderLabelInput = document.getElementById("manageProviderLabelInput");
+    const cancelButtonInput = document.getElementById("cancelButtonInput");
+    const showRescheduleButtonInput = document.getElementById("showRescheduleButtonInput");
+
+    const businessNameInput = document.getElementById("businessNameInput");
+    const tenantKeyInputManual = document.getElementById("tenantKeyInputManual");
+    const sectorInput = document.getElementById("sectorInput");
+    const templateKeyInput = document.getElementById("templateKeyInput");
+    const onboardingStatusInput = document.getElementById("onboardingStatusInput");
+    const internalNotesInput = document.getElementById("internalNotesInput");
+
+
+    const primaryColorInput = document.getElementById("primaryColorInput");
+    const backgroundColorInput = document.getElementById("backgroundColorInput");
+    const cardColorInput = document.getElementById("cardColorInput");
+    const textColorInput = document.getElementById("textColorInput");
+    const phoneInput = document.getElementById("phoneInput");
+    const instagramInput = document.getElementById("instagramInput");
+    const facebookInput = document.getElementById("facebookInput");
+    const websiteInput = document.getElementById("websiteInput");
+
+    const chk_branding = document.getElementById("chk_branding");
+    const chk_texts = document.getElementById("chk_texts");
+    const chk_services = document.getElementById("chk_services");
+    const chk_providers = document.getElementById("chk_providers");
+    const chk_schedule = document.getElementById("chk_schedule");
+    const chk_calendar = document.getElementById("chk_calendar");
+    const chk_test = document.getElementById("chk_test");
+
+    const logoUploadInput = document.getElementById("logoUpload");
+    const uploadLogoBtn = document.getElementById("uploadLogoBtn");
+    const logoPreview = document.getElementById("logoPreview");
+
+    const providerAvailabilitySelect = document.getElementById("providerAvailabilitySelect");
+    const servicesTableWrap = document.getElementById("servicesTableWrap");
+    const addServiceRowBtn = document.getElementById("addServiceRowBtn");
+    const saveServicesDbBtn = document.getElementById("saveServicesDbBtn");
+    const providersTableWrap = document.getElementById("providersTableWrap");
+    const addProviderRowBtn = document.getElementById("addProviderRowBtn");
+    const saveProvidersDbBtn = document.getElementById("saveProvidersDbBtn");
+    const loadProviderAvailabilityBtn = document.getElementById("loadProviderAvailabilityBtn");
+    const providerAvailabilityTableWrap = document.getElementById("providerAvailabilityTableWrap");
+    const saveProviderAvailabilityBtn = document.getElementById("saveProviderAvailabilityBtn");
+    const pageParams = new URLSearchParams(window.location.search);
+    const initialTenantFromUrl = pageParams.get("tenant");
+
+    const providerServicesSelect = document.getElementById("providerServicesSelect");
+    const providerServicesChecklistWrap = document.getElementById("providerServicesChecklistWrap");
+    const saveProviderServicesBtn = document.getElementById("saveProviderServicesBtn");
+
+    const providerCalendarStatusTableWrap = document.getElementById("providerCalendarStatusTableWrap");    
+    const loadProviderCalendarStatusBtn = document.getElementById("loadProviderCalendarStatusBtn");
+
+    const WEEKDAYS = [
+        { value: 0, label: "Segunda-feira" },
+        { value: 1, label: "Terça-feira" },
+        { value: 2, label: "Quarta-feira" },
+        { value: 3, label: "Quinta-feira" },
+        { value: 4, label: "Sexta-feira" },
+        { value: 5, label: "Sábado" },
+        { value: 6, label: "Domingo" }
+    ];
+    const textSuccessMessage = document.getElementById("textSuccessMessage");
+    const textLoadSlotsButton = document.getElementById("textLoadSlotsButton");
+    const textChooseProviderFirst = document.getElementById("textChooseProviderFirst");
+    const textChooseService = document.getElementById("textChooseService");
+    const textNoSlots = document.getElementById("textNoSlots");
+    const textErrorLoadPage = document.getElementById("textErrorLoadPage");
+    const textValidationSelectProvider = document.getElementById("textValidationSelectProvider");
+    const textValidationSelectServiceDate = document.getElementById("textValidationSelectServiceDate");
+    const textValidationPastDate = document.getElementById("textValidationPastDate");
+    const textManageSuccessCancel = document.getElementById("textManageSuccessCancel");
+    const textManageSuccessReschedule = document.getElementById("textManageSuccessReschedule");
+
+    let currentServicesCache = [];
+    let currentProviderServicesCache = [];
+
+    function showMessage(text, type = "success") {
+      messageDiv.className = type;
+      messageDiv.textContent = text;
+    }
+
+    function formatJson(value) {
+      return JSON.stringify(value || {}, null, 2);
+    }
+
+    function activateTab(tabName) {
+      tabs.forEach(tab => {
+        tab.classList.toggle("active", tab.dataset.tab === tabName);
+      });
+
+      tabContents.forEach(content => {
+        content.classList.add("hidden");
+      });
+
+      const target = document.getElementById(`tab-${tabName}`);
+      if (target) {
+        target.classList.remove("hidden");
+      }
+    }
+
+    function refreshPreview() {
+      const tenantKey = tenantKeySelect.value;
+      const previewMode = previewModeSelect.value;
+
+      if (!tenantKey) return;
+
+      const timestamp = new Date().getTime();
+
+      if (previewMode === "manage") {
+        previewFrame.src = `manage.html?preview=1&tenant_key=${encodeURIComponent(tenantKey)}&t=${timestamp}`;
+      } else {
+        previewFrame.src = `index.html?tenant=${encodeURIComponent(tenantKey)}&t=${timestamp}`;
+      }
+    }
+
+    function syncUIToJson() {
+        const theme = {};
+        const texts = {};
+        texts.onboarding = {};
+
+        texts.onboarding.status = onboardingStatusInput.value;
+        texts.onboarding.internal_notes = internalNotesInput.value;
+        texts.onboarding.sector = sectorInput.value;
+        texts.onboarding.chk_branding = chk_branding.checked;
+        texts.onboarding.chk_texts = chk_texts.checked;
+        texts.onboarding.chk_services = chk_services.checked;
+        texts.onboarding.chk_providers = chk_providers.checked;
+        texts.onboarding.chk_schedule = chk_schedule.checked;
+        texts.onboarding.chk_calendar = chk_calendar.checked;
+        texts.onboarding.chk_test = chk_test.checked;
+
+        theme.primary_color = primaryColorInput.value;
+        theme.background_color = backgroundColorInput.value;
+        theme.card_background_color = cardColorInput.value;
+        theme.text_color = textColorInput.value;
+
+        if (logoPreview && logoPreview.src) {
+            theme.logo_url = logoPreview.src;
+        }
+
+        texts.business_name = businessNameInput.value;
+        texts.page_title = pageTitleInput.value;
+        texts.subtitle = subtitleInput.value;
+        texts.provider_label = providerLabelInput.value;
+        texts.service_label = serviceLabelInput.value;
+        texts.date_label = dateLabelInput.value;
+        texts.name_label = nameLabelInput.value;
+        texts.email_label = emailLabelInput.value;
+        texts.book_button = bookButtonInput.value;
+        texts.footer_note = footerNoteInput.value;
+
+        texts.manage_page_title = managePageTitleInput.value;
+        texts.manage_provider_label = manageProviderLabelInput.value;
+        texts.cancel_button = cancelButtonInput.value;
+        texts.show_reschedule_button = showRescheduleButtonInput.value;
+
+        texts.success_message = textSuccessMessage.value;
+        texts.load_slots_button = textLoadSlotsButton.value;
+        texts.choose_provider_first = textChooseProviderFirst.value;
+        texts.choose_service = textChooseService.value;
+        texts.no_slots = textNoSlots.value;
+        texts.error_load_page = textErrorLoadPage.value;
+        texts.validation_select_provider = textValidationSelectProvider.value;
+        texts.validation_select_service_date = textValidationSelectServiceDate.value;
+        texts.validation_past_date = textValidationPastDate.value;
+        texts.manage_success_cancel = textManageSuccessCancel.value;
+        texts.manage_success_reschedule = textManageSuccessReschedule.value;
+
+        return { theme, texts };
+    }
+
+    async function loadTenants() {
+      try {
+        const res = await fetch(`${API_BASE}/admin/tenants`);
+        const data = await res.json();
+
+        if (!res.ok) {
+          showMessage(data.detail || "Erro ao carregar tenants.", "error");
+          return;
+        }
+
+        tenantKeySelect.innerHTML = "";
+
+        data.forEach((tenant) => {
+          const option = document.createElement("option");
+          option.value = tenant.key;
+          option.textContent = `${tenant.name} (${tenant.key})`;
+          tenantKeySelect.appendChild(option);
+        });
+        if (initialTenantFromUrl) {
+            tenantKeySelect.value = initialTenantFromUrl;
+        }
+      } catch (error) {
+        showMessage("Erro de ligação ao servidor ao carregar tenants.", "error");
+      }
+    }
+    function renderServicesTable(services) {
+        if (!servicesTableWrap) return;
+
+        const rows = Array.isArray(services) ? services : [];
+
+        const html = `
+            <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse: collapse;">
+                <thead>
+                <tr>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb;">Nome</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb; width:180px;">Duração (min)</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb; width:120px;">Ações</th>
+                </tr>
+                </thead>
+                <tbody>
+                ${rows.map((service, index) => `
+                    <tr class="service-row" data-index="${index}" data-id="${service.id || ""}">
+                    <td style="padding:10px; border-bottom:1px solid #f1f5f9;">
+                        <input
+                        type="text"
+                        class="service-name-input"
+                        value="${escapeHtml(service.name || "")}"
+                        placeholder="Nome do serviço"
+                        style="width:100%;"
+                        />
+                    </td>
+                    <td style="padding:10px; border-bottom:1px solid #f1f5f9;">
+                        <input
+                        type="number"
+                        class="service-duration-input"
+                        value="${service.duration_minutes ?? 30}"
+                        min="1"
+                        step="1"
+                        style="width:100%;"
+                        />
+                    </td>
+                    <td style="padding:10px; border-bottom:1px solid #f1f5f9;">
+                        <button
+                        type="button"
+                        class="remove-service-row-btn"
+                        style="padding:8px 12px; border:none; border-radius:10px; background:#dc2626; color:white; font-weight:700; cursor:pointer;"
+                        >
+                        Remover
+                        </button>
+                    </td>
+                    </tr>
+                `).join("")}
+                </tbody>
+            </table>
+            </div>
+        `;
+
+        servicesTableWrap.innerHTML = html;
+        bindServiceRowActions();
+    }
+    function escapeHtml(value) {
+        return String(value)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+    }
+    function bindServiceRowActions() {
+        const removeButtons = document.querySelectorAll(".remove-service-row-btn");
+
+        removeButtons.forEach(btn => {
+            btn.addEventListener("click", () => {
+            const row = btn.closest(".service-row");
+            if (row) {
+                row.remove();
+            }
+            });
+        });
+    }
+    async function loadServicesFromDb(tenantKey) {
+        try {
+            const res = await fetch(`${API_BASE}/admin/services?tenant_key=${encodeURIComponent(tenantKey)}`);
+            const data = await res.json();
+
+            if (!res.ok) {
+                showMessage(data.detail || "Erro ao carregar serviços reais.", "error");
+                return [];
+            }
+            currentServicesCache = Array.isArray(data) ? data : [];    
+            renderServicesTable(data);
+            return data;
+        } catch (error) {
+            console.error("Erro em /admin/services:", error);
+            showMessage("Erro de ligação ao carregar serviços.", "error");
+            return [];
+        }
+    }
+    function collectServicesFromTable() {
+        const rows = document.querySelectorAll(".service-row");
+
+        const services = [];
+
+        rows.forEach(row => {
+            const id = row.dataset.id ? parseInt(row.dataset.id, 10) : null;
+            const nameInput = row.querySelector(".service-name-input");
+            const durationInput = row.querySelector(".service-duration-input");
+
+            const name = (nameInput?.value || "").trim();
+            const durationMinutes = parseInt(durationInput?.value || "30", 10);
+
+            if (!name) {
+            return;
+            }
+
+            const service = {
+            name: name,
+            duration_minutes: Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : 30
+            };
+
+            if (id) {
+            service.id = id;
+            }
+
+            services.push(service);
+        });
+
+        return services;
+        }
+    async function saveServicesToDb() {
+        const tenantKey = tenantKeySelect.value.trim();
+
+        if (!tenantKey) {
+            showMessage("Seleciona um tenant.", "error");
+            return;
+        }
+
+        const services = collectServicesFromTable();
+
+        if (services.length === 0) {
+            showMessage("Adiciona pelo menos um serviço.", "error");
+            return;
+        }
+
+        try {
+            saveServicesDbBtn.disabled = true;
+            saveServicesDbBtn.textContent = "A guardar...";
+
+            const res = await fetch(`${API_BASE}/admin/services`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                tenant_key: tenantKey,
+                services: services
+            })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+            showMessage(data.detail || "Erro ao guardar serviços reais.", "error");
+            return;
+            }
+
+            renderServicesTable(data);
+            showMessage("Serviços guardados com sucesso.", "success");
+        } catch (error) {
+            console.error("Erro em POST /admin/services:", error);
+            showMessage("Erro de ligação ao guardar serviços.", "error");
+        } finally {
+            saveServicesDbBtn.disabled = false;
+            saveServicesDbBtn.textContent = "Guardar serviços";
+        }
+    }
+    function addEmptyServiceRow() {
+        const currentServices = collectServicesFromTable();
+        currentServices.push({
+            name: "",
+            duration_minutes: 30
+        });
+        renderServicesTable(currentServices);
+    }
+    function renderProvidersTable(providers) {
+        if (!providersTableWrap) return;
+
+        const rows = Array.isArray(providers) ? providers : [];
+
+        const html = `
+            <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse: collapse;">
+                <thead>
+                <tr>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb;">Nome</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb;">Email calendário</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb; width:180px;">Provider</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb; width:220px;">Conflitos externos</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb; width:120px;">Ações</th>
+                </tr>
+                </thead>
+                <tbody>
+                ${rows.map((provider, index) => `
+                    <tr class="provider-row" data-index="${index}" data-id="${provider.id || ""}">
+                    <td style="padding:10px; border-bottom:1px solid #f1f5f9;">
+                        <input
+                        type="text"
+                        class="provider-name-input"
+                        value="${escapeHtml(provider.name || "")}"
+                        placeholder="Nome do prestador"
+                        style="width:100%;"
+                        />
+                    </td>
+                    <td style="padding:10px; border-bottom:1px solid #f1f5f9;">
+                        <input
+                        type="email"
+                        class="provider-email-input"
+                        value="${escapeHtml(provider.calendar_email || "")}"
+                        placeholder="email@dominio.com"
+                        style="width:100%;"
+                        />
+                    </td>
+                    <td style="padding:10px; border-bottom:1px solid #f1f5f9;">
+                        <select class="provider-calendar-provider-input" style="width:100%;">
+                        <option value="">Escolher</option>
+                        <option value="google" ${provider.calendar_provider === "google" ? "selected" : ""}>Google</option>
+                        <option value="microsoft" ${provider.calendar_provider === "microsoft" ? "selected" : ""}>Microsoft</option>
+                        </select>
+                    </td>
+                    <td style="padding:10px; border-bottom:1px solid #f1f5f9;">
+                        <label style="display:flex; align-items:center; gap:8px;">
+                        <input
+                            type="checkbox"
+                            class="provider-external-conflicts-input"
+                            ${provider.check_external_calendar_conflicts ? "checked" : ""}
+                        />
+                        Verificar calendário externo
+                        </label>
+                    </td>
+                    <td style="padding:10px; border-bottom:1px solid #f1f5f9;">
+                        <button
+                        type="button"
+                        class="remove-provider-row-btn"
+                        style="padding:8px 12px; border:none; border-radius:10px; background:#dc2626; color:white; font-weight:700; cursor:pointer;"
+                        >
+                        Remover
+                        </button>
+                    </td>
+                    </tr>
+                `).join("")}
+                </tbody>
+            </table>
+            </div>
+        `;
+
+        providersTableWrap.innerHTML = html;
+        bindProviderRowActions();
+    }
+    function bindProviderRowActions() {
+        const removeButtons = document.querySelectorAll(".remove-provider-row-btn");
+
+        removeButtons.forEach(btn => {
+            btn.addEventListener("click", () => {
+            const row = btn.closest(".provider-row");
+            if (row) {
+                row.remove();
+            }
+            });
+        });
+    }
+    function populateProviderServicesSelect(providers) {
+        if (!providerServicesSelect) return;
+
+        providerServicesSelect.innerHTML = "";
+
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Escolhe um prestador";
+        providerServicesSelect.appendChild(placeholder);
+
+        (providers || []).forEach(provider => {
+            const option = document.createElement("option");
+            option.value = provider.id;
+            option.textContent = provider.name;
+            providerServicesSelect.appendChild(option);
+        });
+    }
+
+    function renderProviderServicesChecklist(providerId) {
+        if (!providerServicesChecklistWrap) return;
+
+        if (!providerId) {
+            providerServicesChecklistWrap.innerHTML = "<p>Seleciona um prestador para ver os serviços.</p>";
+            return;
+        }
+
+        const relation = currentProviderServicesCache.find(r => String(r.provider_id) === String(providerId));
+        const selectedServiceIds = new Set((relation?.service_ids || []).map(id => Number(id)));
+
+        if (!currentServicesCache.length) {
+            providerServicesChecklistWrap.innerHTML = "<p>Sem serviços configurados.</p>";
+            return;
+        }
+
+        const html = `
+            <div style="display:grid; gap:12px;">
+            ${currentServicesCache.map(service => {
+                const isChecked = selectedServiceIds.has(Number(service.id));
+
+                return `
+                <label
+                    class="provider-service-card ${isChecked ? "is-selected" : ""}"
+                    style="
+                    display:grid;
+                    grid-template-columns: 24px 1fr auto;
+                    align-items:center;
+                    gap:14px;
+                    padding:14px 16px;
+                    border:1px solid ${isChecked ? "#93c5fd" : "#e5e7eb"};
+                    border-radius:12px;
+                    background:${isChecked ? "#eff6ff" : "#ffffff"};
+                    cursor:pointer;
+                    transition:all 0.15s ease;
+                    "
+                >
+                    <input
+                    type="checkbox"
+                    class="provider-service-checkbox"
+                    value="${service.id}"
+                    ${isChecked ? "checked" : ""}
+                    style="width:16px; height:16px; margin:0;"
+                    />
+
+                    <div style="display:flex; flex-direction:column; gap:2px;">
+                    <span style="font-weight:600; color:#111827; line-height:1.2;">
+                        ${escapeHtml(service.name || "")}
+                    </span>
+                    </div>
+
+                    <span
+                    style="
+                        white-space:nowrap;
+                        font-size:13px;
+                        color:${isChecked ? "#1d4ed8" : "#6b7280"};
+                        font-weight:700;
+                    "
+                    >
+                    ${service.duration_minutes || 0} min
+                    </span>
+                </label>
+                `;
+            }).join("")}
+            </div>
+        `;
+
+        providerServicesChecklistWrap.innerHTML = html;
+        bindProviderServicesChecklistActions();
+    }
+
+    function bindProviderServicesChecklistActions() {
+        const checkboxes = document.querySelectorAll(".provider-service-checkbox");
+
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener("change", () => {
+            const card = checkbox.closest(".provider-service-card");
+            if (!card) return;
+
+            const duration = card.querySelector("span:last-child");
+
+            if (checkbox.checked) {
+                card.classList.add("is-selected");
+                card.style.border = "1px solid #93c5fd";
+                card.style.background = "#eff6ff";
+                if (duration) duration.style.color = "#1d4ed8";
+            } else {
+                card.classList.remove("is-selected");
+                card.style.border = "1px solid #e5e7eb";
+                card.style.background = "#ffffff";
+                if (duration) duration.style.color = "#6b7280";
+            }
+            });
+        });
+        }
+    async function loadProvidersFromDb(tenantKey) {
+        try {
+            const res = await fetch(`${API_BASE}/admin/providers?tenant_key=${encodeURIComponent(tenantKey)}`);
+            const data = await res.json();
+
+            if (!res.ok) {
+            showMessage(data.detail || "Erro ao carregar prestadores reais.", "error");
+            return [];
+            }
+            
+            renderProvidersTable(data);
+            populateProviderServicesSelect(data);
+
+            if (providerAvailabilitySelect) {
+            providerAvailabilitySelect.innerHTML = "";
+            data.forEach(provider => {
+                const option = document.createElement("option");
+                option.value = provider.id;
+                option.textContent = `${provider.name} (id=${provider.id})`;
+                providerAvailabilitySelect.appendChild(option);
+            });
+            }
+
+            return data;
+        } catch (error) {
+            console.error("Erro em /admin/providers:", error);
+            showMessage("Erro de ligação ao carregar prestadores.", "error");
+            return [];
+        }
+    }
+
+    function collectProvidersFromTable() {
+        const rows = document.querySelectorAll(".provider-row");
+        const providers = [];
+
+        rows.forEach(row => {
+            const id = row.dataset.id ? parseInt(row.dataset.id, 10) : null;
+
+            const nameInput = row.querySelector(".provider-name-input");
+            const emailInput = row.querySelector(".provider-email-input");
+            const providerInput = row.querySelector(".provider-calendar-provider-input");
+            const externalConflictsInput = row.querySelector(".provider-external-conflicts-input");
+
+            const name = (nameInput?.value || "").trim();
+            const calendarEmail = (emailInput?.value || "").trim();
+            const calendarProvider = (providerInput?.value || "").trim();
+            const checkExternalCalendarConflicts = !!externalConflictsInput?.checked;
+
+            if (!name) {
+            return;
+            }
+
+            const provider = {
+            name: name,
+            calendar_email: calendarEmail || null,
+            calendar_provider: calendarProvider || null,
+            check_external_calendar_conflicts: checkExternalCalendarConflicts
+            };
+
+            if (id) {
+            provider.id = id;
+            }
+
+            providers.push(provider);
+        });
+
+        return providers;
+    }
+
+    async function saveProvidersToDb() {
+        const tenantKey = tenantKeySelect.value.trim();
+
+        if (!tenantKey) {
+            showMessage("Seleciona um tenant.", "error");
+            return;
+        }
+
+        const providers = collectProvidersFromTable();
+
+        if (providers.length === 0) {
+            showMessage("Adiciona pelo menos um prestador.", "error");
+            return;
+        }
+
+        try {
+            saveProvidersDbBtn.disabled = true;
+            saveProvidersDbBtn.textContent = "A guardar...";
+
+            const res = await fetch(`${API_BASE}/admin/providers`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                tenant_key: tenantKey,
+                providers: providers
+            })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+            showMessage(data.detail || "Erro ao guardar prestadores reais.", "error");
+            return;
+            }
+
+            renderProvidersTable(data);
+
+            if (providerAvailabilitySelect) {
+            providerAvailabilitySelect.innerHTML = "";
+            data.forEach(provider => {
+                const option = document.createElement("option");
+                option.value = provider.id;
+                option.textContent = `${provider.name} (id=${provider.id})`;
+                providerAvailabilitySelect.appendChild(option);
+            });
+            }
+
+            showMessage("Prestadores guardados com sucesso.", "success");
+        } catch (error) {
+            console.error("Erro em POST /admin/providers:", error);
+            showMessage("Erro de ligação ao guardar prestadores.", "error");
+        } finally {
+            saveProvidersDbBtn.disabled = false;
+            saveProvidersDbBtn.textContent = "Guardar prestadores";
+        }
+    }
+
+    function addEmptyProviderRow() {
+        const currentProviders = collectProvidersFromTable();
+        currentProviders.push({
+            name: "",
+            calendar_email: "",
+            calendar_provider: "",
+            check_external_calendar_conflicts: false
+        });
+        renderProvidersTable(currentProviders);
+    }
+
+    function renderProviderAvailabilityTable(rows) {
+        if (!providerAvailabilityTableWrap) return;
+
+        const availabilityByWeekday = {};
+        (rows || []).forEach(row => {
+            availabilityByWeekday[row.weekday] = row;
+        });
+
+        const html = `
+            <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse: collapse;">
+                <thead>
+                <tr>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb;">Dia</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb; width:120px;">Ativo</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb; width:180px;">Hora início</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb; width:180px;">Hora fim</th>
+                </tr>
+                </thead>
+                <tbody>
+                ${WEEKDAYS.map(day => {
+                    const row = availabilityByWeekday[day.value] || {};
+                    const isActive = !!row.is_active;
+
+                    return `
+                    <tr class="availability-row" data-weekday="${day.value}" data-id="${row.id || ""}">
+                        <td style="padding:10px; border-bottom:1px solid #f1f5f9;">${day.label}</td>
+                        <td style="padding:10px; border-bottom:1px solid #f1f5f9;">
+                        <input
+                            type="checkbox"
+                            class="availability-active-input"
+                            ${isActive ? "checked" : ""}
+                        />
+                        </td>
+                        <td style="padding:10px; border-bottom:1px solid #f1f5f9;">
+                        <input
+                            type="time"
+                            class="availability-start-input"
+                            value="${row.start_time || "09:00"}"
+                            max="23:59"
+                            ${!isActive ? "disabled" : ""}
+                            style="width:100%;"
+                        />
+                        </td>
+                        <td style="padding:10px; border-bottom:1px solid #f1f5f9;">
+                        <input
+                            type="time"
+                            class="availability-end-input"
+                            value="${row.end_time || "18:00"}"
+                            max="23:59"
+                            ${!isActive ? "disabled" : ""}
+                            style="width:100%;"
+                        />
+                        </td>
+                    </tr>
+                    `;
+                }).join("")}
+                </tbody>
+            </table>
+            </div>
+        `;
+
+        providerAvailabilityTableWrap.innerHTML = html;
+        bindAvailabilityRowActions();
+    }
+
+    function bindAvailabilityRowActions() {
+        const rows = document.querySelectorAll(".availability-row");
+
+        rows.forEach(row => {
+            const activeInput = row.querySelector(".availability-active-input");
+            const startInput = row.querySelector(".availability-start-input");
+            const endInput = row.querySelector(".availability-end-input");
+
+            const syncState = () => {
+            const isActive = !!activeInput.checked;
+            startInput.disabled = !isActive;
+            endInput.disabled = !isActive;
+            };
+
+            activeInput.addEventListener("change", syncState);
+            syncState();
+        });
+    }
+    async function loadProviderAvailabilityFromDb() {
+        const tenantKey = tenantKeySelect.value.trim();
+        const providerId = providerAvailabilitySelect.value;
+
+        if (!tenantKey) {
+            showMessage("Seleciona um tenant.", "error");
+            return [];
+        }
+
+        if (!providerId) {
+            showMessage("Seleciona um prestador.", "error");
+            return [];
+        }
+
+        try {
+            const res = await fetch(
+            `${API_BASE}/admin/provider-availability?tenant_key=${encodeURIComponent(tenantKey)}&provider_id=${encodeURIComponent(providerId)}`
+            );
+            const data = await res.json();
+
+            if (!res.ok) {
+            showMessage(data.detail || "Erro ao carregar horários do prestador.", "error");
+            return [];
+            }
+
+            renderProviderAvailabilityTable(data);
+            return data;
+        } catch (error) {
+            console.error("Erro em /admin/provider-availability:", error);
+            showMessage("Erro de ligação ao carregar horários.", "error");
+            return [];
+        }
+    }
+    function collectProviderAvailabilityFromTable() {
+        const rows = document.querySelectorAll(".availability-row");
+        const availability = [];
+
+        for (const row of rows) {
+            const id = row.dataset.id ? parseInt(row.dataset.id, 10) : null;
+            const weekday = parseInt(row.dataset.weekday, 10);
+
+            const activeInput = row.querySelector(".availability-active-input");
+            const startInput = row.querySelector(".availability-start-input");
+            const endInput = row.querySelector(".availability-end-input");
+
+            const isActive = !!activeInput?.checked;
+            const startTime = startInput?.value || "09:00";
+            const endTime = endInput?.value || "18:00";
+
+            if (isActive && endTime <= startTime) {
+            throw new Error(`A hora fim tem de ser maior do que a hora início no dia ${WEEKDAYS.find(d => d.value === weekday)?.label || weekday}.`);
+            }
+
+            const item = {
+            weekday: weekday,
+            start_time: startTime,
+            end_time: endTime,
+            is_active: isActive
+            };
+
+            if (id) {
+            item.id = id;
+            }
+
+            availability.push(item);
+        }
+
+        return availability;
+    }
+
+    async function saveProviderAvailabilityToDb() {
+        const tenantKey = tenantKeySelect.value.trim();
+        const providerId = providerAvailabilitySelect.value;
+
+        if (!tenantKey) {
+            showMessage("Seleciona um tenant.", "error");
+            return;
+        }
+
+        if (!providerId) {
+            showMessage("Seleciona um prestador.", "error");
+            return;
+        }
+
+        let availability = [];
+
+        try {
+            availability = collectProviderAvailabilityFromTable();
+        } catch (error) {
+            showMessage(error.message || "Erro na validação dos horários.", "error");
+            return;
+        }
+
+        try {
+            saveProviderAvailabilityBtn.disabled = true;
+            saveProviderAvailabilityBtn.textContent = "A guardar...";
+
+            const res = await fetch(`${API_BASE}/admin/provider-availability`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                tenant_key: tenantKey,
+                provider_id: parseInt(providerId, 10),
+                availability: availability
+            })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+            showMessage(data.detail || "Erro ao guardar horários.", "error");
+            return;
+            }
+
+            renderProviderAvailabilityTable(data);
+            showMessage("Horários guardados com sucesso.", "success");
+        } catch (error) {
+            console.error("Erro em POST /admin/provider-availability:", error);
+            showMessage("Erro de ligação ao guardar horários.", "error");
+        } finally {
+            saveProviderAvailabilityBtn.disabled = false;
+            saveProviderAvailabilityBtn.textContent = "Guardar horários";
+        }
+    }
+
+    async function loadConfig() {
+      const tenantKey = tenantKeySelect.value.trim();
+
+      if (!tenantKey) {
+        showMessage("Indica o tenant key.", "error");
+        return;
+      }
+
+      loadBtn.disabled = true;
+      loadBtn.textContent = "A carregar...";
+
+      try {
+        const res = await fetch(`${API_BASE}/admin/frontend-config?tenant_key=${encodeURIComponent(tenantKey)}`);
+        const data = await res.json();
+
+        if (!res.ok) {
+          showMessage(data.detail || "Erro ao carregar configuração.", "error");
+          return;
+        }
+
+        templateKeySelect.value = data.template_key || "default";
+        templateKeyInput.value = data.template_key || "default";
+
+        const theme = data.theme_json || {};
+        const texts = data.texts_json || {};
+        const onboarding = texts.onboarding || {};
+
+        phoneInput.value = data.phone || "";
+        instagramInput.value = data.instagram_url || "";
+        facebookInput.value = data.facebook_url || "";
+        websiteInput.value = data.website_url || "";
+
+        onboardingStatusInput.value = onboarding.status || "not_started";
+        internalNotesInput.value = onboarding.internal_notes || "";
+        businessNameInput.value = data.tenant_name || "";
+        tenantKeyInputManual.value = data.tenant_key || "";
+
+        pageTitleInput.value = texts.page_title || "";
+        subtitleInput.value = texts.subtitle || "";
+        providerLabelInput.value = texts.provider_label || "";
+        serviceLabelInput.value = texts.service_label || "";
+        dateLabelInput.value = texts.date_label || "";
+        nameLabelInput.value = texts.name_label || "";
+        emailLabelInput.value = texts.email_label || "";
+        bookButtonInput.value = texts.book_button || "";
+        footerNoteInput.value = texts.footer_note || "";
+
+        managePageTitleInput.value = texts.manage_page_title || "";
+        manageProviderLabelInput.value = texts.manage_provider_label || "";
+        cancelButtonInput.value = texts.cancel_button || "";
+        showRescheduleButtonInput.value = texts.show_reschedule_button || "";
+
+        primaryColorInput.value = theme.primary_color || "#2563eb";
+        backgroundColorInput.value = theme.background_color || "#f5f7fb";
+        cardColorInput.value = theme.card_background_color || "#ffffff";
+        textColorInput.value = theme.text_color || "#1f2937";
+
+        sectorInput.value = onboarding.sector || "barbershop";
+        chk_branding.checked = onboarding.chk_branding || false;
+        chk_texts.checked = onboarding.chk_texts || false;
+        chk_services.checked = onboarding.chk_services || false;
+        chk_providers.checked = onboarding.chk_providers || false;
+        chk_schedule.checked = onboarding.chk_schedule || false;
+        chk_calendar.checked = onboarding.chk_calendar || false;
+        chk_test.checked = onboarding.chk_test || false;
+        textSuccessMessage.value = texts.success_message || "";
+        textLoadSlotsButton.value = texts.load_slots_button || "";
+        textChooseProviderFirst.value = texts.choose_provider_first || "";
+        textChooseService.value = texts.choose_service || "";
+        textNoSlots.value = texts.no_slots || "";
+        textErrorLoadPage.value = texts.error_load_page || "";
+        textValidationSelectProvider.value = texts.validation_select_provider || "";
+        textValidationSelectServiceDate.value = texts.validation_select_service_date || "";
+        textValidationPastDate.value = texts.validation_past_date || "";
+        textManageSuccessCancel.value = texts.manage_success_cancel || "";
+        textManageSuccessReschedule.value = texts.manage_success_reschedule || "";
+
+        if (theme.logo_url) {
+          logoPreview.src = theme.logo_url;
+        } else {
+          logoPreview.removeAttribute("src");
+        }
+        await loadProvidersFromDb(tenantKey);
+        await loadServicesFromDb(tenantKey);
+        await loadProviderServicesFromDb(tenantKey);
+        await loadProviderCalendarStatusFromDb(tenantKey);
+
+        if (providerAvailabilitySelect.value) {
+        await loadProviderAvailabilityFromDb();
+        }
+        showMessage("Configuração carregada com sucesso.", "success");
+      } catch (error) {
+        console.error("Erro real em loadConfig:", error);
+        showMessage("Erro de ligação ao servidor.", "error");
+      } finally {
+        loadBtn.disabled = false;
+        loadBtn.textContent = "Carregar configuração";
+      }
+    }
+
+    async function loadProviderServicesFromDb(tenantKey) {
+        try {
+            const res = await fetch(`${API_BASE}/admin/provider-services?tenant_key=${encodeURIComponent(tenantKey)}`);
+            const data = await res.json();
+
+            if (!res.ok) {
+            showMessage(data.detail || "Erro ao carregar relações prestador-serviço.", "error");
+            return [];
+            }
+
+            currentProviderServicesCache = Array.isArray(data) ? data : [];
+
+            if (providerServicesSelect?.value) {
+            renderProviderServicesChecklist(providerServicesSelect.value);
+            } else {
+            renderProviderServicesChecklist("");
+            }
+
+            return data;
+        } catch (error) {
+            console.error("Erro em /admin/provider-services:", error);
+            showMessage("Erro de ligação ao carregar relações prestador-serviço.", "error");
+            return [];
+        }
+    }
+
+    function collectProviderServicesFromChecklist() {
+        const providerId = providerServicesSelect.value;
+
+        if (!providerId) {
+            throw new Error("Seleciona um prestador.");
+        }
+
+        const checked = document.querySelectorAll(".provider-service-checkbox:checked");
+
+        return {
+            provider_id: parseInt(providerId, 10),
+            service_ids: Array.from(checked).map(cb => parseInt(cb.value, 10))
+        };
+    }
+
+    async function saveProviderServicesToDb() {
+        const tenantKey = tenantKeySelect.value.trim();
+
+        if (!tenantKey) {
+            showMessage("Seleciona um tenant.", "error");
+            return;
+        }
+
+        let relation;
+
+        try {
+            relation = collectProviderServicesFromChecklist();
+        } catch (error) {
+            showMessage(error.message || "Erro ao recolher serviços do prestador.", "error");
+            return;
+        }
+
+        const otherRelations = currentProviderServicesCache.filter(
+            item => String(item.provider_id) !== String(relation.provider_id)
+        );
+
+        const relations = [...otherRelations, relation];
+
+        try {
+            saveProviderServicesBtn.disabled = true;
+            saveProviderServicesBtn.textContent = "A guardar...";
+
+            const res = await fetch(`${API_BASE}/admin/provider-services`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                tenant_key: tenantKey,
+                relations: relations
+            })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+            showMessage(data.detail || "Erro ao guardar relações prestador-serviço.", "error");
+            return;
+            }
+
+            currentProviderServicesCache = Array.isArray(data) ? data : [];
+            renderProviderServicesChecklist(providerServicesSelect.value);
+
+            showMessage("Serviços do prestador guardados com sucesso.", "success");
+        } catch (error) {
+            console.error("Erro em POST /admin/provider-services:", error);
+            showMessage("Erro de ligação ao guardar relações.", "error");
+        } finally {
+            saveProviderServicesBtn.disabled = false;
+            saveProviderServicesBtn.textContent = "Guardar serviços do prestador";
+        }
+    }
+
+    function getStatusBadgeHtml(row) {
+        let bg = "#e5e7eb";
+        let color = "#111827";
+        let label = row.status_label || "-";
+
+        switch (row.status) {
+            case "connected":
+            bg = "#dcfce7"; // verde claro
+            color = "#166534";
+            break;
+
+            case "pending_auth":
+            bg = "#fef9c3"; // amarelo claro
+            color = "#854d0e";
+            break;
+
+            case "email_mismatch":
+            bg = "#fed7aa"; // laranja claro
+            color = "#9a3412";
+            break;
+
+            case "reauth_required":
+            bg = "#fee2e2"; // vermelho claro
+            color = "#991b1b";
+            label = "Reautenticação necessária";
+            break;
+
+            case "missing_email":
+            case "missing_provider":
+            case "not_configured":
+            bg = "#f3f4f6"; // cinza
+            color = "#374151";
+            break;
+
+            default:
+            bg = "#f3f4f6";
+            color = "#374151";
+        }
+
+        return `
+            <span style="
+            display:inline-block;
+            padding:6px 10px;
+            border-radius:999px;
+            background:${bg};
+            color:${color};
+            font-weight:600;
+            font-size:12px;
+            ">
+            ${label}
+            </span>
+        `;
+        }
+    function renderProviderCalendarStatusTable(rows) {
+        if (!providerCalendarStatusTableWrap) return;
+
+        if (!rows || rows.length === 0) {
+            providerCalendarStatusTableWrap.innerHTML = "<p>Sem prestadores configurados.</p>";
+            return;
+        }
+
+        const html = `
+            <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse: collapse; margin-top: 8px;">
+                <thead>
+                <tr>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb;">Prestador</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb;">Email configurado</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb;">Email autenticado</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb;">Provider</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb;">Estado</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb;">Link para cliente</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb;">Autenticação</th>
+                    <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb;">Teste</th>
+                </tr>
+                </thead>
+                <tbody>
+                ${rows.map(row => {
+                    let authHtml = "-";
+                    let sendLinkHtml = "-";
+                    let testHtml = "-";
+
+                    if (row.auth_url) {
+                    const fullUrl = `${API_BASE}${row.auth_url}`;
+                    const buttonLabel = row.status === "connected" ? "Reautenticar" : "Ligar";
+
+                    authHtml = `<a href="${fullUrl}" target="_blank" rel="noopener noreferrer"
+                        style="display:inline-block; padding:8px 12px; border-radius:10px; background:#2563eb; color:#fff; text-decoration:none; font-weight:700;">
+                        ${buttonLabel}
+                    </a>`;
+
+                    sendLinkHtml = `<button
+                        type="button"
+                        class="copy-auth-link-btn"
+                        data-auth-url="${fullUrl}"
+                        style="padding:8px 12px; border-radius:10px; border:none; background:#111827; color:#fff; font-weight:700; cursor:pointer;">
+                        Copiar link
+                    </button>`;
+                    }
+
+                    if (row.status === "connected" || row.status === "email_mismatch" || row.status === "reauth_required") {
+                    testHtml = `<button
+                        type="button"
+                        class="test-connection-btn"
+                        data-provider-id="${row.provider_id}"
+                        style="padding:8px 12px; border-radius:10px; border:none; background:#0f766e; color:#fff; font-weight:700; cursor:pointer;">
+                        Testar ligação
+                    </button>`;
+                    }
+
+                    if (row.status === "connected" || row.status === "email_mismatch") {
+                    testHtml = `<button
+                        type="button"
+                        class="test-connection-btn"
+                        data-provider-id="${row.provider_id}"
+                        style="padding:8px 12px; border-radius:10px; border:none; background:#0f766e; color:#fff; font-weight:700; cursor:pointer;">
+                        Testar ligação
+                    </button>`;
+                    }
+                    const statusHtml = getStatusBadgeHtml(row);
+                    return `
+                        <tr>
+                            <td style="padding:10px; border-bottom:1px solid #f1f5f9;">${row.provider_name || ""}</td>
+                            <td style="padding:10px; border-bottom:1px solid #f1f5f9;">${row.calendar_email || "-"}</td>
+                            <td style="padding:10px; border-bottom:1px solid #f1f5f9;">${row.connected_email || "-"}</td>
+                            <td style="padding:10px; border-bottom:1px solid #f1f5f9;">${row.calendar_provider || "-"}</td>
+                            <td style="padding:10px; border-bottom:1px solid #f1f5f9;">${statusHtml}</td>
+                            <td style="padding:10px; border-bottom:1px solid #f1f5f9;">${sendLinkHtml}</td>
+                            <td style="padding:10px; border-bottom:1px solid #f1f5f9;">${authHtml}</td>
+                            <td style="padding:10px; border-bottom:1px solid #f1f5f9;">${testHtml}</td>
+                        </tr>
+                        `;
+                }).join("")
+            }
+                </tbody>
+            </table>
+            </div>
+        `;
+
+        providerCalendarStatusTableWrap.innerHTML = html;
+    }
+    async function testProviderCalendarConnection(providerId) {
+        const tenantKey = tenantKeySelect.value.trim();
+
+        if (!tenantKey) {
+            showMessage("Seleciona um tenant.", "error");
+            return;
+        }
+
+        try {
+            const res = await fetch(
+            `${API_BASE}/admin/test-calendar-connection?tenant_key=${encodeURIComponent(tenantKey)}&provider_id=${encodeURIComponent(providerId)}`
+            );
+            const data = await res.json();
+
+            if (!res.ok) {
+                const detail = data.detail;
+
+                if (typeof detail === "string") {
+                    showMessage(detail, "error");
+                } else if (detail && detail.message) {
+                    showMessage(detail.message, "error");
+                } else {
+                    showMessage("Erro ao testar ligação.", "error");
+                }
+                return;
+            }
+
+            showMessage(data.message || "Ligação testada com sucesso.", "success");
+        } catch (error) {
+            console.error("Erro em /admin/test-calendar-connection:", error);
+            showMessage("Erro de ligação ao testar calendário.", "error");
+        }
+        }
+
+        function bindProviderCalendarStatusActions() {
+        const copyButtons = document.querySelectorAll(".copy-auth-link-btn");
+        const testButtons = document.querySelectorAll(".test-connection-btn");
+
+        copyButtons.forEach(btn => {
+            btn.addEventListener("click", async () => {
+            const authUrl = btn.dataset.authUrl;
+            try {
+                await navigator.clipboard.writeText(authUrl);
+                showMessage("Link copiado com sucesso.", "success");
+            } catch (error) {
+                console.error("Erro a copiar link:", error);
+                showMessage("Não foi possível copiar o link.", "error");
+            }
+            });
+        });
+
+        testButtons.forEach(btn => {
+            btn.addEventListener("click", async () => {
+            const providerId = btn.dataset.providerId;
+            await testProviderCalendarConnection(providerId);
+            });
+        });
+        }
+    async function loadProviderCalendarStatusFromDb(tenantKey) {
+        try {
+            const res = await fetch(`${API_BASE}/admin/provider-calendar-status?tenant_key=${encodeURIComponent(tenantKey)}`);
+            const data = await res.json();
+
+            if (!res.ok) {
+            showMessage(data.detail || "Erro ao carregar estado das ligações de calendário.", "error");
+            return [];
+            }
+
+            renderProviderCalendarStatusTable(data);
+            bindProviderCalendarStatusActions();
+            return data;
+        } catch (error) {
+            console.error("Erro em /admin/provider-calendar-status:", error);
+            showMessage("Erro de ligação ao carregar estado das ligações.", "error");
+            return [];
+        }
+        }
+    async function saveConfig() {
+        const tenantKey = tenantKeySelect.value.trim();
+
+        if (!tenantKey) {
+            showMessage("Indica o tenant key.", "error");
+            return;
+        }
+
+        let themeJson;
+        let textsJson;
+
+        try {
+            const synced = syncUIToJson();
+            themeJson = synced.theme;
+            textsJson = synced.texts;
+        } catch (error) {
+            showMessage("Erro ao preparar os dados para guardar.", "error");
+            return;
+        }
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = "A guardar...";
+
+        try {
+            const payload = {
+            tenant_key: tenantKey,
+            template_key: templateKeyInput.value,
+            theme_json: themeJson,
+            texts_json: textsJson,
+            phone: phoneInput.value,
+            instagram_url: instagramInput.value,
+            facebook_url: facebookInput.value,
+            website_url: websiteInput.value
+            };
+
+            const res = await fetch(`${API_BASE}/admin/frontend-config`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+            showMessage(data.detail || "Erro ao guardar configuração.", "error");
+            return;
+            }
+
+            templateKeySelect.value = data.template_key || "default";
+            templateKeyInput.value = data.template_key || "default";
+
+            showMessage("Configuração guardada com sucesso.", "success");
+            refreshPreview();
+        } catch (error) {
+            console.error("Erro em saveConfig:", error);
+            showMessage("Erro de ligação ao servidor.", "error");
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = "Guardar configuração";
+        }
+        }
+
+    async function uploadLogo() {
+      const file = logoUploadInput.files[0];
+
+      if (!file) {
+        showMessage("Seleciona um ficheiro.", "error");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        uploadLogoBtn.disabled = true;
+        uploadLogoBtn.textContent = "A enviar...";
+
+        const res = await fetch(`${API_BASE}/admin/upload-logo`, {
+          method: "POST",
+          body: formData
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          showMessage(data.detail || "Erro no upload.", "error");
+          return;
+        }
+
+        let theme = {};
+        try {
+          theme = JSON.parse(themeJsonTextarea.value || "{}");
+        } catch {
+          theme = {};
+        }
+
+        theme.logo_url = data.logo_url;
+        themeJsonTextarea.value = JSON.stringify(theme, null, 2);
+
+        logoPreview.src = data.logo_url;
+
+        showMessage("Logótipo carregado com sucesso.", "success");
+      } catch (error) {
+        showMessage("Erro de ligação ao servidor.", "error");
+      } finally {
+        uploadLogoBtn.disabled = false;
+        uploadLogoBtn.textContent = "Fazer upload";
+      }
+    }
+
+    tabs.forEach(tab => {
+      tab.addEventListener("click", () => {
+        activateTab(tab.dataset.tab);
+      });
+    });
+
+    loadBtn.addEventListener("click", async () => {
+      await loadConfig();
+      refreshPreview();
+    });
+
+    saveBtn.addEventListener("click", saveConfig);
+    uploadLogoBtn.addEventListener("click", uploadLogo);
+
+
+    refreshPreviewBtn.addEventListener("click", refreshPreview);
+    previewModeSelect.addEventListener("change", refreshPreview);
+
+    tenantKeySelect.addEventListener("change", async () => {
+      await loadConfig();
+      refreshPreview();
+    });
+
+    templateKeyInput.addEventListener("change", syncUIToJson);
+
+    primaryColorInput.addEventListener("change", syncUIToJson);
+    backgroundColorInput.addEventListener("change", syncUIToJson);
+    cardColorInput.addEventListener("change", syncUIToJson);
+    textColorInput.addEventListener("change", syncUIToJson);
+
+    businessNameInput.addEventListener("input", syncUIToJson);
+    pageTitleInput.addEventListener("input", syncUIToJson);
+    subtitleInput.addEventListener("input", syncUIToJson);
+    providerLabelInput.addEventListener("input", syncUIToJson);
+    serviceLabelInput.addEventListener("input", syncUIToJson);
+    dateLabelInput.addEventListener("input", syncUIToJson);
+    nameLabelInput.addEventListener("input", syncUIToJson);
+    emailLabelInput.addEventListener("input", syncUIToJson);
+    bookButtonInput.addEventListener("input", syncUIToJson);
+    footerNoteInput.addEventListener("input", syncUIToJson);
+
+    managePageTitleInput.addEventListener("input", syncUIToJson);
+    manageProviderLabelInput.addEventListener("input", syncUIToJson);
+    cancelButtonInput.addEventListener("input", syncUIToJson);
+    showRescheduleButtonInput.addEventListener("input", syncUIToJson);
+
+    sectorInput.addEventListener("change", syncUIToJson);
+
+    chk_branding.addEventListener("change", syncUIToJson);
+    chk_texts.addEventListener("change", syncUIToJson);
+    chk_services.addEventListener("change", syncUIToJson);
+    chk_providers.addEventListener("change", syncUIToJson);
+    chk_schedule.addEventListener("change", syncUIToJson);
+    chk_calendar.addEventListener("change", syncUIToJson);
+    chk_test.addEventListener("change", syncUIToJson);
+    onboardingStatusInput.addEventListener("change", syncUIToJson);
+    internalNotesInput.addEventListener("input", syncUIToJson);
+    if (addServiceRowBtn) {
+        addServiceRowBtn.addEventListener("click", addEmptyServiceRow);
+    }
+    if (saveServicesDbBtn) {
+        saveServicesDbBtn.addEventListener("click", saveServicesToDb);
+    }
+    if (addProviderRowBtn) {
+        addProviderRowBtn.addEventListener("click", addEmptyProviderRow);
+    }
+    saveProvidersDbBtn.addEventListener("click", saveProvidersToDb);
+    
+    if (loadProviderAvailabilityBtn) {
+        loadProviderAvailabilityBtn.addEventListener("click", loadProviderAvailabilityFromDb);
+    }
+
+    if (saveProviderAvailabilityBtn) {
+        saveProviderAvailabilityBtn.addEventListener("click", saveProviderAvailabilityToDb);
+    }
+    
+    if (providerAvailabilitySelect) {
+        providerAvailabilitySelect.addEventListener("change", () => {
+            if (providerAvailabilitySelect.value) {
+                loadProviderAvailabilityFromDb();
+            } else if (providerAvailabilityTableWrap) {
+                providerAvailabilityTableWrap.innerHTML = "";
+            }
+        });
+    }
+
+    if (providerServicesSelect) {
+        providerServicesSelect.addEventListener("change", () => {
+            renderProviderServicesChecklist(providerServicesSelect.value);
+        }); 
+    }
+
+    if (saveProviderServicesBtn) {
+        saveProviderServicesBtn.addEventListener("click", saveProviderServicesToDb);
+    }
+
+    if (saveProvidersDbBtn) {
+        saveProvidersDbBtn.addEventListener("click", saveProvidersToDb);
+    }
+
+    if (loadProviderCalendarStatusBtn) {
+        loadProviderCalendarStatusBtn.addEventListener("click", async () => {
+            const tenantKey = tenantKeySelect.value.trim();
+            if (!tenantKey) {
+            showMessage("Seleciona um tenant.", "error");
+            return;
+            }
+            await loadProviderCalendarStatusFromDb(tenantKey);
+        });
+    }
+    (async function init() {
+      activateTab("general");
+      await loadTenants();
+      await loadConfig();
+      refreshPreview();
+    })();
+  </script>
+</body>
+</html>

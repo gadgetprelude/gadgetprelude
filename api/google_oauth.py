@@ -32,3 +32,14 @@ def creds_from_token_json(token_json: str) -> Credentials:
 
 def calendar_service_from_creds(creds: Credentials):
     return build("calendar", "v3", credentials=creds, cache_discovery=False)
+    
+
+def google_freebusy(creds, calendar_id: str, time_min, time_max):
+    service = calendar_service_from_creds(creds)
+    body = {
+        "timeMin": time_min.isoformat(),
+        "timeMax": time_max.isoformat(),
+        "timeZone": "UTC",
+        "items": [{"id": calendar_id}],
+    }
+    return service.freebusy().query(body=body).execute()

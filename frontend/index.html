@@ -6,7 +6,11 @@
   <title>Booking Page</title>
   <style>
     :root {
-        --brand-color: #2563eb;
+    --brand-color: #2563eb;
+    --bg-soft: #fcfcfd;
+    --accent-gold: #c5a059;
+    --text-dark: #2d3436;
+    --soft-input-bg: #f8f9fa;
     }
   * {
     box-sizing: border-box;
@@ -17,6 +21,7 @@
     font-family: Arial, sans-serif;
     background: #f5f7fb;
     color: #1f2937;
+    transition: background 0.25s ease, color 0.25s ease;
   }
 
   .page {
@@ -264,6 +269,164 @@
 .business-link:hover {
   background: #e5e7eb;
 }
+
+/* TEMPLATE 2 */
+body.template-2 {
+  background: var(--bg-soft);
+  color: var(--text-dark);
+}
+
+body.template-2 .page {
+  max-width: 460px;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 28px 20px;
+}
+
+body.template-2 .hero {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+body.template-2 .hero h1 {
+  font-size: 2rem;
+  line-height: 1.1;
+  margin-bottom: 12px;
+  letter-spacing: -1px;
+}
+
+body.template-2 .hero p {
+  font-size: 0.95rem;
+  color: #636e72;
+}
+
+body.template-2 .logo-container {
+  margin-bottom: 20px;
+}
+
+body.template-2 .logo-container img {
+  max-width: 120px;
+  max-height: 120px;
+}
+
+body.template-2 .card {
+  background: #ffffff;
+  padding: 18px;
+  border-radius: 40px;
+  box-shadow: 0 30px 60px rgba(0,0,0,0.08);
+}
+
+body.template-2 label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #b2bec3;
+  display: block;
+  margin: 16px 0 8px 18px;
+  text-align: left;
+}
+
+body.template-2 input,
+body.template-2 select {
+  width: 100%;
+  padding: 18px 22px;
+  border: none;
+  background: var(--soft-input-bg);
+  border-radius: 30px;
+  font-size: 1rem;
+  color: var(--text-dark);
+  transition: all 0.25s ease;
+}
+
+body.template-2 input:focus,
+body.template-2 select:focus {
+  outline: none;
+  background: #fff;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+  transform: scale(1.01);
+}
+
+body.template-2 button {
+  border: none;
+  border-radius: 35px;
+  padding: 18px 20px;
+  font-size: 1rem;
+  font-weight: 700;
+  transition: all 0.25s ease;
+}
+
+body.template-2 #loadSlotsBtn,
+body.template-2 .slot-btn {
+  background: #f3f4f6;
+  color: var(--text-dark);
+  box-shadow: none;
+}
+
+body.template-2 #loadSlotsBtn:hover,
+body.template-2 .slot-btn:hover {
+  background: #e9ecef;
+}
+
+body.template-2 #bookBtn {
+  background: var(--text-dark);
+  color: #fff;
+  margin-top: 18px;
+  box-shadow: 0 15px 30px rgba(0,0,0,0.2);
+}
+
+body.template-2 #bookBtn:hover {
+  background: var(--accent-gold);
+  transform: translateY(-3px);
+  box-shadow: 0 20px 40px rgba(197, 160, 89, 0.3);
+}
+
+body.template-2 .slot-btn.selected {
+  background: var(--text-dark);
+  color: #fff;
+  border-color: var(--text-dark);
+}
+
+body.template-2 .slots {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+body.template-2 .business-links {
+  margin-top: 20px;
+}
+
+body.template-2 .business-link {
+  background: #f3f4f6;
+  width: 46px;
+  height: 46px;
+}
+
+body.template-2 .footer-note {
+  margin-top: 22px;
+  font-size: 0.85rem;
+  color: #636e72;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  body.template-2 .page {
+    padding: 20px 16px;
+  }
+
+  body.template-2 .card {
+    padding: 16px;
+    border-radius: 32px;
+  }
+
+  body.template-2 .slots {
+    grid-template-columns: 1fr 1fr;
+  }
+}
 </style>
 </head>
 <body>
@@ -277,25 +440,25 @@
   <p id="heroSubtitle">Escolhe o serviço, a data e o horário que te for mais conveniente.</p>
 </div>
 
-  <div class="card">
+<div class="card" id="bookingCard">
 
-  <label for="provider">Prestador</label>
+  <label id="providerLabel" for="provider">Prestador</label>
   <select id="provider"></select>
 
-  <label for="service">Serviço</label>
+  <label id="serviceLabel" for="service">Serviço</label>
   <select id="service"></select>
 
-  <label for="date">Data</label>
+  <label id="dateLabel" for="date">Data</label>
   <input type="date" id="date" />
 
   <button id="loadSlotsBtn">Ver horários disponíveis</button>
 
   <div id="slotsContainer" class="slots"></div>
 
-  <label for="name">Nome</label>
+  <label id="nameLabel" for="name">Nome</label>
   <input type="text" id="name" placeholder="O seu nome" />
 
-  <label for="email">Email</label>
+  <label id="emailLabel" for="email">Email</label>
   <input type="email" id="email" placeholder="O seu email" />
 
   <button id="bookBtn">Confirmar marcação</button>
@@ -309,6 +472,10 @@
     <a id="websiteLink" class="business-link" href="#" target="_blank" style="display: none;"></a>
   </div>
 
+  <div id="footerNote" class="footer-note">
+    Após a confirmação, receberás um convite por email.
+  </div>
+
   <script>
 
   const providerSelect = document.getElementById("provider");
@@ -320,11 +487,37 @@
   const emailInput = document.getElementById("email");
   const bookBtn = document.getElementById("bookBtn");
   const messageDiv = document.getElementById("message");
+  const bookingCard = document.getElementById("bookingCard");
 
+  const providerLabel = document.getElementById("providerLabel");
+  const serviceLabel = document.getElementById("serviceLabel");
+  const dateLabel = document.getElementById("dateLabel");
+  const nameLabel = document.getElementById("nameLabel");
+  const emailLabel = document.getElementById("emailLabel");
+  const footerNote = document.getElementById("footerNote");
+
+  const pageTitle = document.getElementById("pageTitle");
 
   let selectedSlot = null;
+  
   let publicConfig = null;
   
+  function t(key, fallback) {
+    return publicConfig?.texts?.[key] || fallback;
+  }
+
+  function applyTemplateStyles(templateKey) {
+    document.body.classList.remove("template-2");
+
+    if (templateKey === "template_2") {
+      document.body.classList.add("template-2");
+    }
+  }
+
+  function setButtonText(button, textKey, fallback) {
+    if (!button) return;
+    button.textContent = t(textKey, fallback);
+  }
   const urlParams = new URLSearchParams(window.location.search);
   const tenantKey = urlParams.get("tenant") || "default";
 
@@ -372,22 +565,34 @@
     const dd = String(today.getDate()).padStart(2, "0");
     dateInput.min = `${yyyy}-${mm}-${dd}`;
   }
-  function getTemplateIcons(templateKey = "default") {
-    const iconSets = {
-      default: {
-        phone: "📞",
-        instagram: "📸",
-        facebook: "📘",
-        website: "🌐"
-      }
+
+  function getTemplateIcons(templateKey) {
+    const defaultIcons = {
+      phone: "📞",
+      instagram: "📷",
+      facebook: "📘",
+      website: "🌐"
     };
 
-    return iconSets[templateKey] || iconSets.default;
-}
+    const template2Icons = {
+      phone: "📞",
+      instagram: "📷",
+      facebook: "📘",
+      website: "🌐"
+    };
+
+    if (templateKey === "template_2") {
+      return template2Icons;
+    }
+
+    return defaultIcons;
+  }
+
   async function loadConfig() {
     const res = await fetch(`${API_BASE}/public/config?tenant_key=${encodeURIComponent(tenantKey)}`);
     const data = await res.json();
     const icons = getTemplateIcons(data.template_key || "default");
+    const texts = data.texts || {};
 
     if (!res.ok) {
         throw new Error(data.detail || "Erro ao carregar configuração pública.");
@@ -395,17 +600,47 @@
 
     publicConfig = data;
 
+    applyTemplateStyles(data.template_key || "default");
+    
     if (data.business_name) {
-      document.getElementById("pageTitle").textContent = `Marcar serviço - ${data.business_name}`;
+      document.title = texts.page_title
+        ? `${texts.page_title} - ${data.business_name}`
+        : `Marcar serviço - ${data.business_name}`;
     }
 
-    if (data.subtitle) {
-      heroSubtitle.textContent = data.subtitle;
-    }
+    pageTitle.textContent = texts.page_title || "Marcar serviço";
+    heroSubtitle.textContent = data.subtitle || "Escolhe o serviço, a data e o horário que te for mais conveniente.";
 
     if (data.primary_color) {
       document.documentElement.style.setProperty("--brand-color", data.primary_color);
     }
+
+    if (data.background_color) {
+      document.body.style.background = data.background_color;
+    }
+
+    if (data.text_color) {
+      document.body.style.color = data.text_color;
+    }
+
+    if (data.card_background_color) {
+      bookingCard.style.background = data.card_background_color;
+    }
+
+    providerLabel.textContent = texts.provider_label || "Prestador";
+    serviceLabel.textContent = texts.service_label || "Serviço";
+    dateLabel.textContent = texts.date_label || "Data";
+    nameLabel.textContent = texts.name_label || "Nome";
+    emailLabel.textContent = texts.email_label || "Email";
+
+    nameInput.placeholder = texts.name_placeholder || "O seu nome";
+    emailInput.placeholder = texts.email_placeholder || "O seu email";
+
+    loadSlotsBtn.textContent = texts.load_slots_button || "Ver horários disponíveis";
+    bookBtn.textContent = texts.book_button || "Confirmar marcação";
+
+    footerNote.textContent = texts.footer_note || "Após a confirmação, receberás um convite por email.";
+
 
     if (data.logo_url) {
       businessLogo.src = data.logo_url;
@@ -446,14 +681,14 @@
       facebookLink.style.display = "none";
     }
 
-    if (data.facebook_url) {
-      facebookLink.href = data.facebook_url;
-      facebookLink.innerHTML = icons.facebook;
-      facebookLink.title = "Facebook";
-      facebookLink.style.display = "inline-block";
+    if (data.website_url) {
+      websiteLink.href = data.website_url;
+      websiteLink.innerHTML = icons.website;
+      websiteLink.title = "Website";
+      websiteLink.style.display = "inline-block";
       hasLinks = true;
     } else {
-      facebookLink.style.display = "none";
+      websiteLink.style.display = "none";
     }
 
     businessLinks.style.display = hasLinks ? "flex" : "none";
@@ -471,28 +706,73 @@
 
     providerSelect.innerHTML = "";
 
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = `Escolhe um ${t("provider_label", "prestador").toLowerCase()}`;
+    providerSelect.appendChild(placeholder);
+
     providers.forEach(provider => {
       const option = document.createElement("option");
       option.value = provider.id;
       option.textContent = provider.name;
       providerSelect.appendChild(option);
     });
+
+    providerSelect.value = "";
   }
 
   async function loadServices() {
-    clearMessage();
-
     const providerId = providerSelect.value;
-    const res = await fetch(`${API_BASE}/public/services?tenant_key=${encodeURIComponent(tenantKey)}&provider_id=${providerId}`);
-    const services = await res.json();
 
     serviceSelect.innerHTML = "";
-    services.forEach(service => {
-      const option = document.createElement("option");
-      option.value = service.id;
-      option.textContent = `${service.name} (${service.duration_minutes} min)`;
-      serviceSelect.appendChild(option);
-    });
+    slotsContainer.innerHTML = "";
+    selectedSlot = null;
+
+    const defaultOption = document.createElement("option");
+    defaultOption.value = "";
+    defaultOption.textContent = "Escolhe primeiro um prestador";
+    serviceSelect.appendChild(defaultOption);
+
+    if (!providerId) {
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/public/services?tenant_key=${encodeURIComponent(tenantKey)}&provider_id=${encodeURIComponent(providerId)}`
+      );
+      const data = await res.json();
+
+      console.log("SERVICES RESPONSE:", data);
+
+      if (!res.ok) {
+        showMessage(data.detail || "Erro ao carregar serviços.", "error");
+        return;
+      }
+
+      if (!Array.isArray(data)) {
+        showMessage("Resposta inválida ao carregar serviços.", "error");
+        return;
+      }
+
+      serviceSelect.innerHTML = "";
+
+      const placeholderOption = document.createElement("option");
+      placeholderOption.value = "";
+      placeholderOption.textContent = "Escolhe um serviço";
+      serviceSelect.appendChild(placeholderOption);
+
+      data.forEach(service => {
+        const option = document.createElement("option");
+        option.value = service.id;
+        option.textContent = service.name;
+        serviceSelect.appendChild(option);
+      });
+
+    } catch (error) {
+      console.error("Erro real em loadServices:", error);
+      showMessage("Erro de ligação ao carregar serviços.", "error");
+    }
   }
 
   async function loadAvailability() {
@@ -510,23 +790,33 @@
     const todayStr = `${yyyy}-${mm}-${dd}`;
 
     if (dateStr < todayStr) {
-      showMessage("Não podes escolher uma data no passado.", "error");
+      showMessage(t("validation_past_date", "Não podes escolher uma data no passado."), "error");
+      return;
+    }
+
+    if (!providerId) {
+      showMessage(t("validation_select_provider", "Escolhe um prestador."), "error");
       return;
     }
 
     if (!serviceId || !dateStr) {
-      showMessage("Escolhe um serviço e uma data.", "error");
+      showMessage(t("validation_select_service_date", "Escolhe um serviço e uma data."), "error");
       return;
     }
 
     loadSlotsBtn.disabled = true;
-    loadSlotsBtn.textContent = "A carregar horários...";
+    setButtonText(loadSlotsBtn, "loading_slots_button", "A carregar horários...");
 
     try {
-      const url = `${API_BASE}/public/availability?tenant_key=${encodeURIComponent(tenantKey)}&provider_id=${providerId}&service_id=${serviceId}&date_str=${dateStr}`;      const res = await fetch(url);
+      const url = `${API_BASE}/public/availability?tenant_key=${encodeURIComponent(tenantKey)}&provider_id=${encodeURIComponent(providerId)}&service_id=${encodeURIComponent(serviceId)}&date=${encodeURIComponent(dateStr)}`;
+
+      const res = await fetch(url);
       const data = await res.json();
 
+      console.log("AVAILABILITY RESPONSE:", data);
+
       if (!res.ok) {
+        console.error("Resposta backend availability:", data);
         showMessage(data.detail || "Erro ao carregar disponibilidade.", "error");
         return;
       }
@@ -557,10 +847,11 @@
         slotsContainer.appendChild(btn);
       });
     } catch (error) {
+      console.error("Erro real em loadAvailability:", error);
       showMessage("Erro de ligação ao servidor ao carregar horários.", "error");
     } finally {
       loadSlotsBtn.disabled = false;
-      loadSlotsBtn.textContent = "Ver horários disponíveis";
+      setButtonText(loadSlotsBtn, "load_slots_button", "Ver horários disponíveis");
     }
   }
 
@@ -585,20 +876,20 @@
     }
 
     if (!selectedSlot) {
-      showMessage("Escolhe um horário.", "error");
+      showMessage(t("validation_select_slot", "Escolhe um horário."), "error");
       return;
     }
 
     if (!customerName || !customerEmail) {
-      showMessage("Preenche nome e email.", "error");
+      showMessage(t("validation_fill_name_email", "Preenche nome e email."), "error");
       return;
     }
 
     bookBtn.disabled = true;
-    bookBtn.textContent = "A confirmar marcação...";
+    setButtonText(bookBtn, "loading_book_button", "A confirmar marcação...");
     
     if (!providerId) {
-      showMessage("Escolhe um prestador.", "error");
+      showMessage(t("validation_select_provider", "Escolhe um prestador."), "error");
       return;
     } 
 
@@ -623,17 +914,19 @@
       const data = await res.json();
 
       if (!res.ok) {
-        showMessage(data.detail || "Erro ao criar marcação.", "error");
+        showMessage(data.detail || t("error_create_booking", "Erro ao criar marcação."), "error");
         return;
       }
 
       const manageUrl = `${window.location.origin}/manage.html?token=${encodeURIComponent(data.public_token)}`;
       messageDiv.className = "message success";
+      const manageBookingText = publicConfig?.texts?.manage_booking_link || "Gerir marcação";
+
       messageDiv.innerHTML = `
         <div>${publicConfig?.success_message || "Marcação criada com sucesso. Verifica o teu email para o convite."}</div>
         <div style="margin-top: 10px;">
           <a href="${manageUrl}" style="color: inherit; font-weight: bold; text-decoration: underline;">
-            Gerir marcação
+            ${manageBookingText}
           </a>
         </div>
       `;
@@ -641,10 +934,10 @@
       nameInput.value = "";
       emailInput.value = "";
     } catch (error) {
-      showMessage("Erro de ligação ao servidor ao criar marcação.", "error");
+      showMessage(t("error_server_create_booking", "Erro de ligação ao servidor ao criar marcação."), "error");
     } finally {
       bookBtn.disabled = false;
-      bookBtn.textContent = "Confirmar marcação";
+      setButtonText(bookBtn, "book_button", "Confirmar marcação");
     }
   }
 
@@ -668,21 +961,23 @@
 
   async function initPage() {
     try {
-        setTodayAsMinDate();
-        await loadConfig();
-        await loadProviders();
-        await loadServices();
+      setTodayAsMinDate();
+      await loadConfig();
+      await loadProviders();
+
+      serviceSelect.innerHTML = "";
+      const defaultOption = document.createElement("option");
+      defaultOption.value = "";
+      defaultOption.textContent = "Escolhe primeiro um prestador";
+      serviceSelect.appendChild(defaultOption);
     } catch (error) {
-        showMessage("Erro ao carregar a página de marcação.", "error");
-        console.error(error);
+      showMessage(t("error_load_page", "Erro ao carregar a página de marcação."), "error");
+      console.error(error);
     }
   }
 
 initPage();
 </script>
-    <div class="footer-note">
-      Após a confirmação, receberás um convite por email.
-    </div>
   </div>
 </div>
 </body>

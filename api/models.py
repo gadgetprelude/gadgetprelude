@@ -1,23 +1,26 @@
 from db import Base
-from sqlalchemy import String, DateTime, Text, Integer, ForeignKey, Column,Time, Boolean
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, DateTime, Text, Integer, ForeignKey, Column,Time, Boolean,ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
+from datetime import datetime
 
 class CalendarConnection(Base):
     __tablename__ = "calendar_connections"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     tenant_id: Mapped[int | None] = mapped_column(ForeignKey("tenants.id"), nullable=True)
-    provider: Mapped[str] = mapped_column(String(20), default="google")   # google
+    provider: Mapped[str] = mapped_column(String(20), default="google")
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     calendar_id: Mapped[str] = mapped_column(String(255), nullable=False, default="primary")
-
-    # Tokens em JSON (simples para MVP). Em produção: encriptar/guardar em vault.
     token_json: Mapped[str] = mapped_column(Text, nullable=False)
 
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_test_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    last_test_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 class Contact(Base):
     __tablename__ = "contacts"
@@ -100,10 +103,22 @@ class Tenant(Base):
     instagram_url = Column(String, nullable=True)
     facebook_url = Column(String, nullable=True)
     website_url = Column(String, nullable=True)
-    created_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     template_key = Column(String, nullable=True)
+    frontend_configs = relationship("TenantFrontendConfig", back_populates="tenant")
+
+class TenantFrontendConfig(Base):
+    __tablename__ = "tenant_frontend_config"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    template_key = Column(String(50), nullable=False)
+    theme_json = Column(JSONB, nullable=False, default=dict)
+    texts_json = Column(JSONB, nullable=False, default=dict)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    tenant = relationship("Tenant", back_populates="frontend_configs")
 
 class Provider(Base):
     __tablename__ = "providers"
@@ -112,6 +127,8 @@ class Provider(Base):
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     name = Column(String, nullable=False)
     calendar_email = Column(String, nullable=True)
+    calendar_provider = Column(String, nullable=True)
+    check_external_calendar_conflicts: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 class ProviderService(Base):
     __tablename__ = "provider_services"
