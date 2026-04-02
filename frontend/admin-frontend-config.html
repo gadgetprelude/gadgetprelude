@@ -172,10 +172,22 @@
 <body>
   <div class="page">
     <div class="hero">
-      <h1>Gestão de Clientes</h1>
-      <p>Editar template, serviços, prestadores e textos por cliente.</p>
-    </div>
+      <div class="admin-topbar" style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:18px;">
+        <div>
+            <h1 style="margin:0;">Gestão de Clientes</h1>
+            <p style="margin:8px 0 0 0; color:#6b7280;">
+            Editar template, serviços, prestadores e textos por cliente.
+            </p>
+        </div>
 
+        <div style="display:flex; align-items:center; gap:12px;">
+            <div id="adminUserBadge" style="font-size:14px; color:#374151;"></div>
+            <button id="logoutBtn" type="button" style="padding:10px 14px; border:none; border-radius:12px; background:#111827; color:#fff; font-weight:700; cursor:pointer;">
+            Sair
+            </button>
+        </div>
+     </div>
+    </div>
     <div class="tabs">
         <button type="button" class="tab active" data-tab="general">Geral</button>
         <button type="button" class="tab" data-tab="branding">Branding</button>
@@ -183,6 +195,7 @@
         <button type="button" class="tab" data-tab="operations">Operação</button>
         <button type="button" class="tab" data-tab="preview">Preview</button>
         <button type="button" class="tab" data-tab="checklist">Checklist</button>
+        <button type="button" class="tab" data-tab="users">Utilizadores</button>
     </div>
 
     <div class="card">
@@ -583,6 +596,26 @@
         <label><input type="checkbox" id="chk_test" /> Teste completo feito</label>
       </div>
     </div>
+    <div id="tab-users" class="tab-content hidden">
+        <div class="card">
+            <h3>Utilizadores</h3>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:12px; margin-bottom:18px;">
+            <input id="newAdminUserEmail" type="email" placeholder="Email do utilizador" />
+            <input id="newAdminUserPassword" type="password" placeholder="Password inicial" />
+            <label style="display:flex; align-items:center; gap:8px;">
+                <input id="newAdminUserIsSuperuser" type="checkbox" />
+                Superuser
+            </label>
+            </div>
+
+            <div style="margin-bottom:18px;">
+            <button id="createAdminUserBtn" type="button">Criar utilizador</button>
+            </div>
+
+            <div id="adminUsersListWrap"></div>
+        </div>
+    </div>
   </div>
 
   <script>
@@ -597,6 +630,9 @@
     }
 
     const API_BASE = getApiBase();
+
+    const logoutBtn = document.getElementById("logoutBtn");
+    const adminUserBadge = document.getElementById("adminUserBadge");
 
     const tabs = document.querySelectorAll(".tab");
     const tabContents = document.querySelectorAll(".tab-content");
@@ -696,8 +732,17 @@
     const textManageSuccessCancel = document.getElementById("textManageSuccessCancel");
     const textManageSuccessReschedule = document.getElementById("textManageSuccessReschedule");
 
+    const newAdminUserEmail = document.getElementById("newAdminUserEmail");
+    const newAdminUserPassword = document.getElementById("newAdminUserPassword");
+    const newAdminUserIsSuperuser = document.getElementById("newAdminUserIsSuperuser");
+    const createAdminUserBtn = document.getElementById("createAdminUserBtn");
+    const adminUsersListWrap = document.getElementById("adminUsersListWrap");
+    
     let currentServicesCache = [];
     let currentProviderServicesCache = [];
+    
+    let adminUsersCache = [];
+    let availablePermissionKeysCache = [];
 
     function showMessage(text, type = "success") {
       messageDiv.className = type;
@@ -805,6 +850,12 @@
         const textsTab = document.querySelector('.tab[data-tab="texts"]');
         const operationsTab = document.querySelector('.tab[data-tab="operations"]');
 
+        const usersTab = document.querySelector('.tab[data-tab="users"]');
+
+        if (usersTab && !currentAdminSession.user?.is_superuser) {
+        usersTab.style.display = "none";
+        }
+
         if (brandingTab && !hasPermission("branding.view")) {
             brandingTab.style.display = "none";
         }
@@ -822,6 +873,18 @@
         }
     }
 
+    async function logoutAdmin() {
+        try {
+            await fetch(`${API_BASE}/admin/auth/logout`, {
+            method: "POST",
+            credentials: "include"
+            });
+        } catch (error) {
+            console.error("Erro no logout:", error);
+        } finally {
+            window.location.href = "admin-login.html";
+        }
+    }
     async function loadTenants() {
       try {
         const res = await fetch(`${API_BASE}/admin/tenants`, {credentials: "include"});
@@ -838,6 +901,7 @@
           const option = document.createElement("option");
           option.value = tenant.key;
           option.textContent = `${tenant.name} (${tenant.key})`;
+          option.dataset.tenantId = tenant.id;
           tenantKeySelect.appendChild(option);
         });
         if (initialTenantFromUrl) {
@@ -993,6 +1057,7 @@
 
             const res = await fetch(`${API_BASE}/admin/services`, {
             method: "POST",
+            credentials: "include",
             headers: {
                 "Content-Type": "application/json"
             },
@@ -1000,7 +1065,7 @@
                 tenant_key: tenantKey,
                 services: services
             })
-            }, {credentials: "include"});
+            });
 
             const data = await res.json();
 
@@ -1316,6 +1381,7 @@
 
             const res = await fetch(`${API_BASE}/admin/providers`, {
             method: "POST",
+            credentials: "include",
             headers: {
                 "Content-Type": "application/json"
             },
@@ -1323,7 +1389,7 @@
                 tenant_key: tenantKey,
                 providers: providers
             })
-            }, {credentials: "include"});
+            });
 
             const data = await res.json();
 
@@ -1548,6 +1614,7 @@
 
             const res = await fetch(`${API_BASE}/admin/provider-availability`, {
             method: "POST",
+            credentials: "include",
             headers: {
                 "Content-Type": "application/json"
             },
@@ -1556,7 +1623,7 @@
                 provider_id: parseInt(providerId, 10),
                 availability: availability
             })
-            }, {credentials: "include"});
+            });
 
             const data = await res.json();
 
@@ -1746,6 +1813,7 @@
 
             const res = await fetch(`${API_BASE}/admin/provider-services`, {
             method: "POST",
+            credentials: "include",
             headers: {
                 "Content-Type": "application/json"
             },
@@ -1753,7 +1821,7 @@
                 tenant_key: tenantKey,
                 relations: relations
             })
-            }, {credentials: "include"});
+            });
 
             const data = await res.json();
 
@@ -1827,7 +1895,8 @@
             ${label}
             </span>
         `;
-        }
+    }
+
     function renderProviderCalendarStatusTable(rows) {
         if (!providerCalendarStatusTableWrap) return;
 
@@ -2030,11 +2099,12 @@
 
             const res = await fetch(`${API_BASE}/admin/frontend-config`, {
             method: "POST",
+            credentials: "include",
             headers: {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify(payload)
-            }, {credentials: "include"});
+            });
 
             const data = await res.json();
 
@@ -2074,8 +2144,9 @@
 
         const res = await fetch(`${API_BASE}/admin/upload-logo`, {
           method: "POST",
+          credentials: "include",
           body: formData
-        }, {credentials: "include"});
+        });
 
         const data = await res.json();
 
@@ -2123,10 +2194,191 @@
             }
 
             currentAdminSession = data;
+            if (adminUserBadge) {
+                const email = data.user?.email || "";
+                const role = data.user?.is_superuser ? "Superuser" : "Utilizador";
+                adminUserBadge.textContent = `${email} · ${role}`;
+            }
             return data;
         } catch (error) {
             window.location.href = "admin-login.html";
             return null;
+        }
+    }
+
+    async function loadAvailablePermissionKeys() {
+        const res = await fetch(`${API_BASE}/admin/permission-keys`, {
+            credentials: "include"
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.detail || "Erro ao carregar permissões.");
+        }
+
+        availablePermissionKeysCache = Array.isArray(data) ? data : [];
+    }
+
+    async function loadAdminUsers() {
+        const res = await fetch(`${API_BASE}/admin/users`, {
+            credentials: "include"
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.detail || "Erro ao carregar utilizadores.");
+        }
+
+        adminUsersCache = Array.isArray(data) ? data : [];
+        renderAdminUsers();
+    }
+
+    function renderAdminUsers() {
+        if (!adminUsersListWrap) return;
+
+        if (!adminUsersCache.length) {
+            adminUsersListWrap.innerHTML = "<p>Sem utilizadores.</p>";
+            return;
+        }
+
+        const tenantOptions = Array.from(tenantKeySelect.options).map(opt => ({
+            value: opt.dataset?.tenantId || "",
+            label: opt.textContent || ""
+        })).filter(x => x.value);
+
+        const html = adminUsersCache.map(user => {
+            const tenantIds = new Set((user.tenants || []).map(t => Number(t.id)));
+            const permissions = new Set(user.permissions || []);
+
+            return `
+            <div style="border:1px solid #e5e7eb; border-radius:16px; padding:16px; margin-bottom:16px; background:#fff;">
+                <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:12px;">
+                <div>
+                    <div style="font-weight:700;">${user.email}</div>
+                    <div style="font-size:13px; color:#6b7280;">
+                    ${user.is_superuser ? "Superuser" : "Utilizador"} · ${user.is_active ? "Ativo" : "Inativo"}
+                    </div>
+                </div>
+                </div>
+
+                <div style="margin-bottom:14px;">
+                <div style="font-weight:700; margin-bottom:8px;">Tenants</div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px;">
+                    ${tenantOptions.map(t => `
+                    <label style="display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" class="user-tenant-checkbox" data-user-id="${user.id}" value="${t.value}" ${tenantIds.has(Number(t.value)) ? "checked" : ""} />
+                        <span>${t.label}</span>
+                    </label>
+                    `).join("")}
+                </div>
+                </div>
+
+                <div style="margin-bottom:14px;">
+                <div style="font-weight:700; margin-bottom:8px;">Permissões</div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px;">
+                    ${availablePermissionKeysCache.map(p => `
+                    <label style="display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" class="user-permission-checkbox" data-user-id="${user.id}" value="${p.key}" ${permissions.has(p.key) ? "checked" : ""} />
+                        <span>${p.label}</span>
+                    </label>
+                    `).join("")}
+                </div>
+                </div>
+
+                <button type="button" class="save-user-access-btn" data-user-id="${user.id}">
+                Guardar acessos
+                </button>
+            </div>
+            `;
+        }).join("");
+
+        adminUsersListWrap.innerHTML = html;
+        bindAdminUsersActions();
+    }
+
+    function bindAdminUsersActions() {
+        const buttons = document.querySelectorAll(".save-user-access-btn");
+
+        buttons.forEach(btn => {
+            btn.addEventListener("click", async () => {
+            const userId = btn.dataset.userId;
+
+            const tenantIds = Array.from(document.querySelectorAll(`.user-tenant-checkbox[data-user-id="${userId}"]:checked`))
+                .map(cb => Number(cb.value));
+
+            const permissions = Array.from(document.querySelectorAll(`.user-permission-checkbox[data-user-id="${userId}"]:checked`))
+                .map(cb => cb.value);
+
+            try {
+                const res = await fetch(`${API_BASE}/admin/users/${userId}/access`, {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    tenant_ids: tenantIds,
+                    permissions: permissions
+                })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                showMessage(data.detail || "Erro ao guardar acessos do utilizador.", "error");
+                return;
+                }
+
+                showMessage("Acessos do utilizador guardados com sucesso.", "success");
+                await loadAdminUsers();
+            } catch (error) {
+                showMessage("Erro de ligação ao guardar acessos do utilizador.", "error");
+            }
+            });
+        });
+    }
+
+    async function createAdminUser() {
+        const email = newAdminUserEmail.value.trim();
+        const password = newAdminUserPassword.value;
+        const isSuperuser = !!newAdminUserIsSuperuser.checked;
+
+        if (!email || !password) {
+            showMessage("Preenche email e password do novo utilizador.", "error");
+            return;
+        }
+
+        try {
+            const res = await fetch(`${API_BASE}/admin/users`, {
+            method: "POST",
+            credentials: "include",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                email,
+                password,
+                is_superuser: isSuperuser
+            })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+            showMessage(data.detail || "Erro ao criar utilizador.", "error");
+            return;
+            }
+
+            newAdminUserEmail.value = "";
+            newAdminUserPassword.value = "";
+            newAdminUserIsSuperuser.checked = false;
+
+            showMessage("Utilizador criado com sucesso.", "success");
+            await loadAdminUsers();
+        } catch (error) {
+            showMessage("Erro de ligação ao criar utilizador.", "error");
         }
     }
 
@@ -2240,10 +2492,23 @@
             await loadProviderCalendarStatusFromDb(tenantKey);
         });
     }
+    
+    if (createAdminUserBtn) {
+        createAdminUserBtn.addEventListener("click", createAdminUser);
+    }
+
+    if (logoutBtn) {
+        logoutBtn.addEventListener("click", logoutAdmin);
+    }
+
     (async function init() {
       const session = await loadAdminSession();
       if (!session) return;
       applyAdminPermissionsUI();
+      if (currentAdminSession?.user?.is_superuser) {
+        await loadAvailablePermissionKeys();
+        await loadAdminUsers();
+    }
       activateTab("general");
       await loadTenants();
       await loadConfig();

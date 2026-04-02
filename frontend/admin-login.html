@@ -118,6 +118,11 @@
             }
 
             currentAdminSession = data;
+            if (adminUserBadge) {
+              const email = data.user?.email || "";
+              const role = data.user?.is_superuser ? "Superuser" : "Utilizador";
+              adminUserBadge.textContent = `${email} · ${role}`;
+            }
             return data;
         } catch (error) {
             window.location.href = "admin-login.html";
