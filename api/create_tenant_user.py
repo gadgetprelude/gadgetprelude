@@ -1,6 +1,14 @@
 from db import SessionLocal
 from models import AdminUser
 from admin_security import hash_password
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+#Para correr em prod ini
+DATABASE_URL = "postgresql://gadgetprelude:vhVJZHdXsfgbHI2yKPc9vJ529A3qL6gE@dpg-d6uofipr0fns73br470g-a.oregon-postgres.render.com/gadgetprelude";
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
 
 db = SessionLocal()
 

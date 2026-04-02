@@ -108,6 +108,26 @@ Base.metadata.create_all(bind=engine)
 
 serializer = URLSafeSerializer(os.getenv("SESSION_SECRET", "dev"))
 
+ADMIN_PERMISSION_KEYS = [
+    "general.view",
+    "general.edit",
+    "branding.view",
+    "branding.edit",
+    "texts.view",
+    "texts.edit",
+    "operations.providers.view",
+    "operations.providers.edit",
+    "operations.services.view",
+    "operations.services.edit",
+    "operations.provider_services.view",
+    "operations.provider_services.edit",
+    "operations.availability.view",
+    "operations.availability.edit",
+    "operations.calendar_links.view",
+    "operations.calendar_links.edit",
+]
+
+
 @app.get("/cors-test")
 def cors_test():
     return {"ok": True}
@@ -381,6 +401,7 @@ def microsoft_callback(code: str, state: str, db: Session = Depends(get_db)):
     <p>Email: <b>{email}</b></p>
     <p>Tenant: <b>{tenant.key}</b></p>
     """)
+
 def get_tenant(db: Session, x_tenant_key: str | None):
     key = (x_tenant_key or "default").strip()
     if key.lower() in ("", "string", "null", "none"):
@@ -473,6 +494,7 @@ def create_appointment(payload: AppointmentCreate, db: Session = Depends(get_db)
         "start_at": ap.start_at.isoformat(),
         "end_at": ap.end_at.isoformat(),
     }
+
 @app.post("/appointments/{appointment_id}/reschedule")
 def reschedule_appointment(appointment_id: int, payload: AppointmentReschedule, db: Session = Depends(get_db), x_tenant_key: str = Header(default="default", alias="X-Tenant-Key")):
     tenant = get_tenant(db, x_tenant_key)
@@ -613,8 +635,6 @@ def schedule_reminders_for_appointment(db: Session, appointment: Appointment, po
         db.add(r)
 
     db.commit()
-
-
 
 @app.post("/debug/reminder-policy/set")
 def debug_set_policy(db: Session = Depends(get_db)):
@@ -1044,6 +1064,7 @@ def get_default_frontend_texts():
         "success_cancel_booking": "Marcação cancelada com sucesso.",
         "success_reschedule_booking": "Marcação reagendada com sucesso."
     }
+
 def get_default_frontend_theme():
     return {
         "primary_color": "#2563eb",
@@ -1212,7 +1233,7 @@ def admin_get_frontend_config(request: Request, tenant_key: str, db: Session = D
     }
 
 @app.post("/admin/frontend-config")
-def admin_save_frontend_config(payload: dict = Body(...), db: Session = Depends(get_db)):
+def admin_save_frontend_config(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
     tenant_key = payload.get("tenant_key")
     template_key = payload.get("template_key", "default")
     theme_json = payload.get("theme_json", {})
@@ -1731,6 +1752,7 @@ def admin_save_services(request: Request,payload: dict = Body(...), db: Session 
         }
         for service in saved_services
     ]
+
 @app.get("/admin/providers")
 def admin_list_providers(request: Request,tenant_key: str, db: Session = Depends(get_db)):
     tenant = get_tenant(db, tenant_key)
@@ -1832,6 +1854,7 @@ def admin_save_providers(request: Request, payload: dict = Body(...), db: Sessio
         }
         for provider in saved_providers
     ]
+
 @app.get("/admin/provider-availability")
 def admin_get_provider_availability(
     request: Request,
@@ -1864,6 +1887,7 @@ def admin_get_provider_availability(
         }
         for row in rows
     ]
+
 @app.post("/admin/provider-availability")
 def admin_save_provider_availability(request: Request,payload: dict = Body(...), db: Session = Depends(get_db)):
     tenant_key = payload.get("tenant_key")
@@ -1966,6 +1990,7 @@ def admin_save_provider_availability(request: Request,payload: dict = Body(...),
         }
         for row in rows
     ]
+
 @app.get("/admin/provider-services")
 def admin_get_provider_services(request: Request,tenant_key: str, db: Session = Depends(get_db)):
     tenant = get_tenant(db, tenant_key)
@@ -2314,3 +2339,98 @@ def admin_test_calendar_connection(
                 "technical_error": str(e)
             }
         )
+    
+@app.get("/admin/users")
+def admin_users_list(request: Request, db: Session = Depends(get_db)):
+    user = require_superuser(request, db)
+
+    users = db.query(AdminUser).order_by(AdminUser.email).all()
+
+    result = []
+    for u in users:
+        tenant_links = (
+            db.query(AdminUserTenant, Tenant)
+            .join(Tenant, Tenant.id == AdminUserTenant.tenant_id)
+            .filter(AdminUserTenant.user_id == u.id)
+            .all()
+        )
+
+        perms = (
+            db.query(AdminUserPermission.permission_key)
+            .filter(AdminUserPermission.user_id == u.id)
+            .all()
+        )
+
+        result.append({
+            "id": u.id,
+            "email": u.email,
+            "is_active": u.is_active,
+            "is_superuser": u.is_superuser,
+            "tenants": [
+                {"id": t.id, "key": t.key, "name": t.name}
+                for _, t in tenant_links
+            ],
+            "permissions": [p[0] for p in perms]
+        })
+
+    return result
+
+@app.post("/admin/users")
+def admin_create_user(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
+    user = require_superuser(request, db)
+
+    email = (payload.get("email") or "").strip().lower()
+    password = payload.get("password") or ""
+    is_superuser = bool(payload.get("is_superuser", False))
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password are required")
+
+    existing = db.query(AdminUser).filter(AdminUser.email == email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="User already exists")
+
+    new_user = AdminUser(
+        email=email,
+        password_hash=hash_password(password),
+        is_active=True,
+        is_superuser=is_superuser
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return {"ok": True, "id": new_user.id}
+
+@app.post("/admin/users/{user_id}/access")
+def admin_update_user_access(
+    user_id: int,
+    request: Request,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db)
+):
+    user = require_superuser(request, db)
+
+    target = db.query(AdminUser).filter(AdminUser.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    tenant_ids = payload.get("tenant_ids") or []
+    permissions = payload.get("permissions") or []
+
+    db.query(AdminUserTenant).filter(AdminUserTenant.user_id == user_id).delete()
+    db.query(AdminUserPermission).filter(AdminUserPermission.user_id == user_id).delete()
+
+    for tenant_id in tenant_ids:
+        db.add(AdminUserTenant(user_id=user_id, tenant_id=int(tenant_id)))
+
+    for perm in permissions:
+        db.add(AdminUserPermission(user_id=user_id, permission_key=str(perm)))
+
+    db.commit()
+    return {"ok": True}
+
+@app.get("/admin/permission-keys")
+def admin_permission_keys(request: Request, db: Session = Depends(get_db)):
+    require_superuser(request, db)
+    return [{"key": key, "label": key} for key in ADMIN_PERMISSION_KEYS]
