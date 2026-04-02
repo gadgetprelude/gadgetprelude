@@ -12,7 +12,7 @@ from datetime import datetime
 from models import CalendarConnection, Contact, Service, Appointment, Provider, ProviderService
 from datetime import datetime, date, time, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException, Body
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 from dotenv import load_dotenv
 from itsdangerous import URLSafeSerializer
 from sqlalchemy.orm import Session
@@ -29,15 +29,27 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from calendar_adapters.factory import get_calendar_adapter
 from microsoft_oauth import exchange_microsoft_code_for_tokens
+from itsdangerous import URLSafeSerializer, BadSignature
+from fastapi import Response, Request
+from models import AdminUser, AdminUserTenant, AdminUserPermission
+from admin_security import hash_password, verify_password
 
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
-app = FastAPI(title="gadgetprelude API")
+SESSION_COOKIE_NAME = "gp_admin_session"
+ADMIN_COOKIE_SECURE = os.getenv("ADMIN_COOKIE_SECURE", "false").lower() == "true"
+session_serializer = URLSafeSerializer(os.getenv("SECRET_KEY", "dev-secret"), salt="gp-admin-session")
 
+app = FastAPI(title="gadgetprelude API")
+# "https://gadgetprelude.onrender.com",
+print("CORS CONFIG CARREGADA")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://127.0.0.1:5500",
+        "http://localhost:5500",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -95,9 +107,98 @@ Base.metadata.create_all(bind=engine)
 
 serializer = URLSafeSerializer(os.getenv("SESSION_SECRET", "dev"))
 
+@app.get("/cors-test")
+def cors_test():
+    return {"ok": True}
+
 @app.get("/")
 def home():
     return {"ok": True, "service": "gadgetprelude", "time": datetime.now(timezone.utc).isoformat()}
+
+def create_admin_session_cookie(response: Response, user_id: int):
+    session_value = session_serializer.dumps({"user_id": user_id})
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=session_value,
+        httponly=True,
+        secure=ADMIN_COOKIE_SECURE,  # em produção depois mudamos para True se estiveres só em HTTPS
+        samesite="lax",
+        max_age=60 * 60 * 8,  # 8 horas
+        path="/"
+    )
+
+def clear_admin_session_cookie(response: Response):
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        path="/"
+    )
+
+def get_current_admin_user(request: Request, db: Session):
+    cookie_value = request.cookies.get(SESSION_COOKIE_NAME)
+
+    if not cookie_value:
+        return None
+
+    try:
+        data = session_serializer.loads(cookie_value)
+        user_id = data.get("user_id")
+    except BadSignature:
+        return None
+
+    if not user_id:
+        return None
+
+    user = db.query(AdminUser).filter(AdminUser.id == user_id, AdminUser.is_active == True).first()
+    return user
+
+def require_admin_user(request: Request, db: Session):
+    user = get_current_admin_user(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+def require_superuser(request: Request, db: Session):
+    user = require_admin_user(request, db)
+    if not user.is_superuser:
+        raise HTTPException(status_code=403, detail="Superuser required")
+    return user
+
+def user_has_tenant_access(db: Session, user: AdminUser, tenant_id: int) -> bool:
+    if user.is_superuser:
+        return True
+
+    link = (
+        db.query(AdminUserTenant)
+        .filter(
+            AdminUserTenant.user_id == user.id,
+            AdminUserTenant.tenant_id == tenant_id
+        )
+        .first()
+    )
+    return link is not None
+def user_has_permission(db: Session, user: AdminUser, permission_key: str) -> bool:
+    if user.is_superuser:
+        return True
+
+    perm = (
+        db.query(AdminUserPermission)
+        .filter(
+            AdminUserPermission.user_id == user.id,
+            AdminUserPermission.permission_key == permission_key
+        )
+        .first()
+    )
+    return perm is not None
+
+def require_tenant_access(db: Session, user: AdminUser, tenant_id: int):
+    if not user_has_tenant_access(db, user, tenant_id):
+        raise HTTPException(status_code=403, detail="No access to this tenant")
+
+
+def require_permission(db: Session, user: AdminUser, permission_key: str):
+    if not user_has_permission(db, user, permission_key):
+        raise HTTPException(status_code=403, detail=f"Missing permission: {permission_key}")
+
 
 @app.get("/auth/google/start")
 def google_start(tenant_key: str = "default"):
@@ -1006,9 +1107,80 @@ def public_config(tenant_key: str = "default", db: Session = Depends(get_db)):
         "texts": merged_texts
     }
 
+@app.post("/admin/auth/login")
+def admin_login(payload: dict = Body(...), db: Session = Depends(get_db)):
+    print("ENTROU NO LOGIN")
+    email = (payload.get("email") or "").strip().lower()
+    password = payload.get("password") or ""
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password are required")
+
+    user = db.query(AdminUser).filter(AdminUser.email == email, AdminUser.is_active == True).first()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    if not verify_password(password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    response = JSONResponse({
+        "ok": True,
+        "email": user.email,
+        "is_superuser": user.is_superuser
+    })
+
+    create_admin_session_cookie(response, user.id)
+    return response
+
+@app.post("/admin/auth/logout")
+def admin_logout():
+    response = JSONResponse({"ok": True})
+    clear_admin_session_cookie(response)
+    return response
+
+@app.get("/admin/auth/me")
+def admin_me(request: Request, db: Session = Depends(get_db)):
+    user = require_admin_user(request, db)
+
+    tenant_links = (
+        db.query(AdminUserTenant, Tenant)
+        .join(Tenant, Tenant.id == AdminUserTenant.tenant_id)
+        .filter(AdminUserTenant.user_id == user.id)
+        .all()
+    )
+
+    permissions = (
+        db.query(AdminUserPermission.permission_key)
+        .filter(AdminUserPermission.user_id == user.id)
+        .all()
+    )
+
+    return {
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "is_superuser": user.is_superuser
+        },
+        "tenants": [
+            {
+                "id": tenant.id,
+                "key": tenant.key,
+                "name": tenant.name
+            }
+            for _, tenant in tenant_links
+        ],
+        "permissions": [p[0] for p in permissions]
+    }
+
 @app.get("/admin/frontend-config")
-def admin_get_frontend_config(tenant_key: str, db: Session = Depends(get_db)):
+def admin_get_frontend_config(request: Request, tenant_key: str, db: Session = Depends(get_db)):
+    user = require_admin_user(request, db)
     tenant = get_tenant(db, tenant_key)
+    
+    require_tenant_access(db, user, tenant.id)
+    require_permission(db, user, "general.view")
+
     frontend_config = get_active_frontend_config(db, tenant.id)
 
     if not frontend_config:
@@ -1053,6 +1225,10 @@ def admin_save_frontend_config(payload: dict = Body(...), db: Session = Depends(
         raise HTTPException(status_code=400, detail="tenant_key é obrigatório.")
 
     tenant = get_tenant(db, tenant_key)
+    user = require_admin_user(request, db)
+    require_tenant_access(db, user, tenant.id)
+    require_permission(db, user, "general.edit")
+
     tenant.phone = phone
     tenant.instagram_url = instagram_url
     tenant.facebook_url = facebook_url
@@ -1441,19 +1617,30 @@ def get_active_frontend_config(db: Session, tenant_id: int):
     )
 
 @app.get("/admin/tenants")
-def admin_list_tenants(db: Session = Depends(get_db)):
-    tenants = db.query(Tenant).order_by(Tenant.name.asc()).all()
+def admin_tenants(request: Request, db: Session = Depends(get_db)):
+    user = require_admin_user(request, db)
+
+    if user.is_superuser:
+        tenants = db.query(Tenant).order_by(Tenant.name).all()
+    else:
+        tenants = (
+            db.query(Tenant)
+            .join(AdminUserTenant, AdminUserTenant.tenant_id == Tenant.id)
+            .filter(AdminUserTenant.user_id == user.id)
+            .order_by(Tenant.name)
+            .all()
+        )
 
     return [
-        {
-            "key": tenant.key,
-            "name": tenant.name
-        }
-        for tenant in tenants
+        {"id": t.id, "key": t.key, "name": t.name}
+        for t in tenants
     ]
 @app.get("/admin/services")
-def admin_list_services(tenant_key: str, db: Session = Depends(get_db)):
+def admin_list_services(request: Request,tenant_key: str, db: Session = Depends(get_db)):
     tenant = get_tenant(db, tenant_key)
+    user = require_admin_user(request, db)
+    require_tenant_access(db, user, tenant.id)
+    require_permission(db, user, "operations.services.view")
 
     services = (
         db.query(Service)
@@ -1471,7 +1658,7 @@ def admin_list_services(tenant_key: str, db: Session = Depends(get_db)):
         for service in services
     ]
 @app.post("/admin/services")
-def admin_save_services(payload: dict = Body(...), db: Session = Depends(get_db)):
+def admin_save_services(request: Request,payload: dict = Body(...), db: Session = Depends(get_db)):
     tenant_key = payload.get("tenant_key")
     services = payload.get("services", [])
 
@@ -1482,6 +1669,9 @@ def admin_save_services(payload: dict = Body(...), db: Session = Depends(get_db)
         raise HTTPException(status_code=400, detail="services deve ser uma lista.")
 
     tenant = get_tenant(db, tenant_key)
+    user = require_admin_user(request, db)
+    require_tenant_access(db, user, tenant.id)
+    require_permission(db, user, "operations.services.edit")
 
     saved_ids = []
 
@@ -1541,8 +1731,11 @@ def admin_save_services(payload: dict = Body(...), db: Session = Depends(get_db)
         for service in saved_services
     ]
 @app.get("/admin/providers")
-def admin_list_providers(tenant_key: str, db: Session = Depends(get_db)):
+def admin_list_providers(request: Request,tenant_key: str, db: Session = Depends(get_db)):
     tenant = get_tenant(db, tenant_key)
+    user = require_admin_user(request, db)
+    require_tenant_access(db, user, tenant.id)
+    require_permission(db, user, "operations.providers.view")
 
     providers = (
         db.query(Provider)
@@ -1563,7 +1756,7 @@ def admin_list_providers(tenant_key: str, db: Session = Depends(get_db)):
     ]
 
 @app.post("/admin/providers")
-def admin_save_providers(payload: dict = Body(...), db: Session = Depends(get_db)):
+def admin_save_providers(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
     tenant_key = payload.get("tenant_key")
     providers = payload.get("providers", [])
 
@@ -1574,6 +1767,9 @@ def admin_save_providers(payload: dict = Body(...), db: Session = Depends(get_db
         raise HTTPException(status_code=400, detail="providers deve ser uma lista.")
 
     tenant = get_tenant(db, tenant_key)
+    user = require_admin_user(request, db)
+    require_tenant_access(db, user, tenant.id)
+    require_permission(db, user, "operations.providers.edit")
 
     for item in providers:
         provider_id = item.get("id")
@@ -1637,11 +1833,15 @@ def admin_save_providers(payload: dict = Body(...), db: Session = Depends(get_db
     ]
 @app.get("/admin/provider-availability")
 def admin_get_provider_availability(
+    request: Request,
     tenant_key: str,
     provider_id: int,
     db: Session = Depends(get_db)
 ):
     tenant = get_tenant(db, tenant_key)
+    user = require_admin_user(request, db)
+    require_tenant_access(db, user, tenant.id)
+    require_permission(db, user, "operations.availability.view")
 
     rows = (
         db.query(ProviderAvailability)
@@ -1664,7 +1864,7 @@ def admin_get_provider_availability(
         for row in rows
     ]
 @app.post("/admin/provider-availability")
-def admin_save_provider_availability(payload: dict = Body(...), db: Session = Depends(get_db)):
+def admin_save_provider_availability(request: Request,payload: dict = Body(...), db: Session = Depends(get_db)):
     tenant_key = payload.get("tenant_key")
     provider_id = payload.get("provider_id")
     availability = payload.get("availability", [])
@@ -1679,6 +1879,9 @@ def admin_save_provider_availability(payload: dict = Body(...), db: Session = De
         raise HTTPException(status_code=400, detail="availability deve ser uma lista.")
 
     tenant = get_tenant(db, tenant_key)
+    user = require_admin_user(request, db)
+    require_tenant_access(db, user, tenant.id)
+    require_permission(db, user, "operations.availability.edit")
 
     provider = (
         db.query(Provider)
@@ -1763,8 +1966,11 @@ def admin_save_provider_availability(payload: dict = Body(...), db: Session = De
         for row in rows
     ]
 @app.get("/admin/provider-services")
-def admin_get_provider_services(tenant_key: str, db: Session = Depends(get_db)):
+def admin_get_provider_services(request: Request,tenant_key: str, db: Session = Depends(get_db)):
     tenant = get_tenant(db, tenant_key)
+    user = require_admin_user(request, db)
+    require_tenant_access(db, user, tenant.id)
+    require_permission(db, user, "operations.provider_services.view")
 
     rows = (
         db.query(ProviderService)
@@ -1787,7 +1993,7 @@ def admin_get_provider_services(tenant_key: str, db: Session = Depends(get_db)):
 
 
 @app.post("/admin/provider-services")
-def admin_save_provider_services(payload: dict = Body(...), db: Session = Depends(get_db)):
+def admin_save_provider_services(request: Request,payload: dict = Body(...), db: Session = Depends(get_db)):
     tenant_key = payload.get("tenant_key")
     relations = payload.get("relations", [])
 
@@ -1798,6 +2004,9 @@ def admin_save_provider_services(payload: dict = Body(...), db: Session = Depend
         raise HTTPException(status_code=400, detail="relations deve ser uma lista.")
 
     tenant = get_tenant(db, tenant_key)
+    user = require_admin_user(request, db)
+    require_tenant_access(db, user, tenant.id)
+    require_permission(db, user, "operations.provider_services.edit")
 
     for item in relations:
         provider_id = item.get("provider_id")
@@ -1875,9 +2084,13 @@ def admin_save_provider_services(payload: dict = Body(...), db: Session = Depend
         grouped[row.provider_id]["service_ids"].append(row.service_id)
 
     return list(grouped.values())
+
 @app.get("/admin/provider-calendar-status")
-def admin_provider_calendar_status(tenant_key: str, db: Session = Depends(get_db)):
+def admin_provider_calendar_status(request: Request,tenant_key: str, db: Session = Depends(get_db)):
     tenant = get_tenant(db, tenant_key)
+    user = require_admin_user(request, db)
+    require_tenant_access(db, user, tenant.id)
+    require_permission(db, user, "operations.calendar_links.view")
 
     providers = (
         db.query(Provider)
@@ -1968,11 +2181,15 @@ def admin_provider_calendar_status(tenant_key: str, db: Session = Depends(get_db
 
 @app.get("/admin/test-calendar-connection")
 def admin_test_calendar_connection(
+    request: Request,
     tenant_key: str,
     provider_id: int,
     db: Session = Depends(get_db)
 ):
     tenant = get_tenant(db, tenant_key)
+    user = require_admin_user(request, db)
+    require_tenant_access(db, user, tenant.id)
+    require_permission(db, user, "operations.calendar_links.edit")
 
     provider = (
         db.query(Provider)

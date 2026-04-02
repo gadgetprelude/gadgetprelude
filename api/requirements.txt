@@ -14,6 +14,6 @@ requests==2.32.3
 email-validator==2.2.0
 openai
 requests
-
+passlib[bcrypt]
 
 
