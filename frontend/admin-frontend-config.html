@@ -2181,6 +2181,48 @@
             credentials: "include"
             });
 
+            const text = await res.text();
+            console.log("DEBUG /admin/auth/me status =", res.status);
+            console.log("DEBUG /admin/auth/me body =", text);
+
+            if (res.status === 401) {
+            showMessage("Sessão inválida ou cookie não enviado para /admin/auth/me", "error");
+            return null;
+            }
+
+            let data = {};
+            try {
+            data = JSON.parse(text);
+            } catch {
+            data = {};
+            }
+
+            if (!res.ok) {
+            showMessage("Erro ao validar sessão admin.", "error");
+            return null;
+            }
+
+            currentAdminSession = data;
+
+            if (adminUserBadge) {
+            const email = data.user?.email || "";
+            const role = data.user?.is_superuser ? "Superuser" : "Utilizador";
+            adminUserBadge.textContent = `${email} · ${role}`;
+            }
+
+            return data;
+        } catch (error) {
+            console.error("Erro real em loadAdminSession:", error);
+            showMessage("Erro ao validar sessão admin.", "error");
+            return null;
+        }
+    }/*
+    async function loadAdminSession() {
+        try {
+            const res = await fetch(`${API_BASE}/admin/auth/me`, {
+            credentials: "include"
+            });
+
             if (res.status === 401) {
             window.location.href = "admin-login.html";
             return null;
@@ -2204,7 +2246,7 @@
             window.location.href = "admin-login.html";
             return null;
         }
-    }
+    }*/
 
     async function loadAvailablePermissionKeys() {
         const res = await fetch(`${API_BASE}/admin/permission-keys`, {

@@ -12,7 +12,7 @@ from datetime import datetime
 from models import CalendarConnection, Contact, Service, Appointment, Provider, ProviderService
 from datetime import datetime, date, time, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException, Body
-from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
+from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse, FileResponse
 from dotenv import load_dotenv
 from itsdangerous import URLSafeSerializer
 from sqlalchemy.orm import Session
@@ -33,9 +33,12 @@ from itsdangerous import URLSafeSerializer, BadSignature
 from fastapi import Response, Request
 from models import AdminUser, AdminUserTenant, AdminUserPermission
 from admin_security import hash_password, verify_password
-
+from fastapi.staticfiles import StaticFiles
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
+
+FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 SESSION_COOKIE_NAME = "gp_admin_session"
 ADMIN_COOKIE_SECURE = os.getenv("ADMIN_COOKIE_SECURE", "false").lower() == "true"
@@ -2433,3 +2436,22 @@ def admin_update_user_access(
 def admin_permission_keys(request: Request, db: Session = Depends(get_db)):
     require_superuser(request, db)
     return [{"key": key, "label": key} for key in ADMIN_PERMISSION_KEYS]
+
+@app.get("/admin-login.html")
+def admin_login_page():
+    return FileResponse(FRONTEND_DIR / "admin-login.html")
+
+
+@app.get("/admin-frontend-config.html")
+def admin_frontend_config_page():
+    return FileResponse(FRONTEND_DIR / "admin-frontend-config.html")
+
+
+@app.get("/index.html")
+def booking_page():
+    return FileResponse(FRONTEND_DIR / "index.html")
+
+
+@app.get("/manage.html")
+def manage_page():
+    return FileResponse(FRONTEND_DIR / "manage.html")
