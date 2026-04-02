@@ -42,7 +42,6 @@ ADMIN_COOKIE_SECURE = os.getenv("ADMIN_COOKIE_SECURE", "false").lower() == "true
 session_serializer = URLSafeSerializer(os.getenv("SECRET_KEY", "dev-secret"), salt="gp-admin-session")
 
 app = FastAPI(title="gadgetprelude API")
-# "https://gadgetprelude.onrender.com",
 print("CORS CONFIG CARREGADA")
 app.add_middleware(
     CORSMiddleware,
@@ -50,6 +49,7 @@ app.add_middleware(
         "http://127.0.0.1:5500",
         "http://localhost:5500",
         "https://gadgetprelude.onrender.com",
+        "https://book.gadgetprelude.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
