@@ -190,17 +190,12 @@
         <div class="field">
           <label for="tenantKey">Tenant</label>
           <select id="tenantKey"></select>
-        </div>
-
+        </div class="field">
         <div class="field">
             <label for="templateKey">Template atual</label>
-            <select id="templateKey" disabled style="background:#f3f4f6; color:#6b7280; cursor:not-allowed;">
-                <option value="default">default</option>
-                <option value="template_2">template_2</option>
-            </select>
+            <input id="templateKey" type="text" disabled style="background:#f3f4f6; color:#6b7280">
         </div>
       </div>
-
       <div class="actions">
         <button id="loadBtn" type="button">Carregar configuração</button>
         <button id="saveBtn" type="button" class="secondary">Guardar configuração</button>
@@ -240,6 +235,9 @@
             <select id="templateKeyInput">
               <option value="default">default</option>
               <option value="template_2">template_2</option>
+              <option value="template_3">template_3</option>
+              <option value="template_4">template_4</option>
+              <option value="template_5">template_5</option>
             </select>
           </div>
         </div>
@@ -796,9 +794,37 @@
         return { theme, texts };
     }
 
+    function hasPermission(permissionKey) {
+        if (!currentAdminSession) return false;
+        if (currentAdminSession.user?.is_superuser) return true;
+        return (currentAdminSession.permissions || []).includes(permissionKey);
+    }
+
+    function applyAdminPermissionsUI() {
+        const brandingTab = document.querySelector('.tab[data-tab="branding"]');
+        const textsTab = document.querySelector('.tab[data-tab="texts"]');
+        const operationsTab = document.querySelector('.tab[data-tab="operations"]');
+
+        if (brandingTab && !hasPermission("branding.view")) {
+            brandingTab.style.display = "none";
+        }
+
+        if (textsTab && !hasPermission("texts.view")) {
+            textsTab.style.display = "none";
+        }
+
+        if (operationsTab && !hasPermission("operations.providers.view") &&
+            !hasPermission("operations.services.view") &&
+            !hasPermission("operations.provider_services.view") &&
+            !hasPermission("operations.availability.view") &&
+            !hasPermission("operations.calendar_links.view")) {
+            operationsTab.style.display = "none";
+        }
+    }
+
     async function loadTenants() {
       try {
-        const res = await fetch(`${API_BASE}/admin/tenants`);
+        const res = await fetch(`${API_BASE}/admin/tenants`, {credentials: "include"});
         const data = await res.json();
 
         if (!res.ok) {
@@ -899,7 +925,7 @@
     }
     async function loadServicesFromDb(tenantKey) {
         try {
-            const res = await fetch(`${API_BASE}/admin/services?tenant_key=${encodeURIComponent(tenantKey)}`);
+            const res = await fetch(`${API_BASE}/admin/services?tenant_key=${encodeURIComponent(tenantKey)}`, {credentials: "include"});
             const data = await res.json();
 
             if (!res.ok) {
@@ -974,7 +1000,7 @@
                 tenant_key: tenantKey,
                 services: services
             })
-            });
+            }, {credentials: "include"});
 
             const data = await res.json();
 
@@ -1202,7 +1228,7 @@
         }
     async function loadProvidersFromDb(tenantKey) {
         try {
-            const res = await fetch(`${API_BASE}/admin/providers?tenant_key=${encodeURIComponent(tenantKey)}`);
+            const res = await fetch(`${API_BASE}/admin/providers?tenant_key=${encodeURIComponent(tenantKey)}`, {credentials: "include"});
             const data = await res.json();
 
             if (!res.ok) {
@@ -1297,7 +1323,7 @@
                 tenant_key: tenantKey,
                 providers: providers
             })
-            });
+            }, {credentials: "include"});
 
             const data = await res.json();
 
@@ -1440,7 +1466,7 @@
         try {
             const res = await fetch(
             `${API_BASE}/admin/provider-availability?tenant_key=${encodeURIComponent(tenantKey)}&provider_id=${encodeURIComponent(providerId)}`
-            );
+            , {credentials: "include"});
             const data = await res.json();
 
             if (!res.ok) {
@@ -1530,7 +1556,7 @@
                 provider_id: parseInt(providerId, 10),
                 availability: availability
             })
-            });
+            }, {credentials: "include"});
 
             const data = await res.json();
 
@@ -1562,7 +1588,7 @@
       loadBtn.textContent = "A carregar...";
 
       try {
-        const res = await fetch(`${API_BASE}/admin/frontend-config?tenant_key=${encodeURIComponent(tenantKey)}`);
+        const res = await fetch(`${API_BASE}/admin/frontend-config?tenant_key=${encodeURIComponent(tenantKey)}`, {credentials: "include"});
         const data = await res.json();
 
         if (!res.ok) {
@@ -1652,7 +1678,7 @@
 
     async function loadProviderServicesFromDb(tenantKey) {
         try {
-            const res = await fetch(`${API_BASE}/admin/provider-services?tenant_key=${encodeURIComponent(tenantKey)}`);
+            const res = await fetch(`${API_BASE}/admin/provider-services?tenant_key=${encodeURIComponent(tenantKey)}`, {credentials: "include"});
             const data = await res.json();
 
             if (!res.ok) {
@@ -1727,7 +1753,7 @@
                 tenant_key: tenantKey,
                 relations: relations
             })
-            });
+            }, {credentials: "include"});
 
             const data = await res.json();
 
@@ -1901,7 +1927,7 @@
         try {
             const res = await fetch(
             `${API_BASE}/admin/test-calendar-connection?tenant_key=${encodeURIComponent(tenantKey)}&provider_id=${encodeURIComponent(providerId)}`
-            );
+            , {credentials: "include"});
             const data = await res.json();
 
             if (!res.ok) {
@@ -1950,7 +1976,7 @@
         }
     async function loadProviderCalendarStatusFromDb(tenantKey) {
         try {
-            const res = await fetch(`${API_BASE}/admin/provider-calendar-status?tenant_key=${encodeURIComponent(tenantKey)}`);
+            const res = await fetch(`${API_BASE}/admin/provider-calendar-status?tenant_key=${encodeURIComponent(tenantKey)}`, {credentials: "include"});
             const data = await res.json();
 
             if (!res.ok) {
@@ -2008,7 +2034,7 @@
                 "Content-Type": "application/json"
             },
             body: JSON.stringify(payload)
-            });
+            }, {credentials: "include"});
 
             const data = await res.json();
 
@@ -2049,7 +2075,7 @@
         const res = await fetch(`${API_BASE}/admin/upload-logo`, {
           method: "POST",
           body: formData
-        });
+        }, {credentials: "include"});
 
         const data = await res.json();
 
@@ -2077,6 +2103,31 @@
         uploadLogoBtn.disabled = false;
         uploadLogoBtn.textContent = "Fazer upload";
       }
+    }
+    async function loadAdminSession() {
+        try {
+            const res = await fetch(`${API_BASE}/admin/auth/me`, {
+            credentials: "include"
+            });
+
+            if (res.status === 401) {
+            window.location.href = "admin-login.html";
+            return null;
+            }
+
+            const data = await res.json();
+
+            if (!res.ok) {
+            window.location.href = "admin-login.html";
+            return null;
+            }
+
+            currentAdminSession = data;
+            return data;
+        } catch (error) {
+            window.location.href = "admin-login.html";
+            return null;
+        }
     }
 
     tabs.forEach(tab => {
@@ -2190,6 +2241,9 @@
         });
     }
     (async function init() {
+      const session = await loadAdminSession();
+      if (!session) return;
+      applyAdminPermissionsUI();
       activateTab("general");
       await loadTenants();
       await loadConfig();
