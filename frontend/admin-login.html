@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login Admin</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f7fb;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: white;
+      padding: 28px;
+      border-radius: 18px;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.08);
+    }
+    h1 {
+      margin-top: 0;
+      margin-bottom: 18px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px 14px;
+      border: 1px solid #d1d5db;
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+    button {
+      width: 100%;
+      padding: 12px 14px;
+      border: none;
+      border-radius: 12px;
+      background: #2563eb;
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .message {
+      margin-top: 14px;
+      padding: 12px;
+      border-radius: 12px;
+      display: none;
+    }
+    .message.error {
+      display: block;
+      background: #fee2e2;
+      color: #991b1b;
+    }
+  </style>
+</head> 
+<body>
+  <div class="card">
+    <h1>Login Admin</h1>
+
+    <label for="email">Email</label>
+    <input id="email" type="email" />
+
+    <label for="password">Password</label>
+    <input id="password" type="password" />
+
+    <button id="loginBtn" type="button">Entrar</button>
+
+    <div id="message" class="message"></div>
+  </div>
+
+  <script>
+    
+    let currentAdminSession = null;
+
+    function getApiBase() {
+      const host = window.location.hostname;
+      if (host === "127.0.0.1" || host === "localhost") {
+        return "http://127.0.0.1:8000";
+      }
+      return "https://gadgetprelude.onrender.com";
+    }
+
+    const API_BASE = getApiBase();
+    const emailInput = document.getElementById("email");
+    const passwordInput = document.getElementById("password");
+    const loginBtn = document.getElementById("loginBtn");
+    const messageDiv = document.getElementById("message");
+
+    function showError(text) {
+      messageDiv.className = "message error";
+      messageDiv.textContent = text;
+    }
+    async function loadAdminSession() {
+        try {
+            const res = await fetch(`${API_BASE}/admin/auth/me`, {
+            credentials: "include"
+            });
+
+            if (res.status === 401) {
+            window.location.href = "admin-login.html";
+            return null;
+            }
+
+            const data = await res.json();
+
+            if (!res.ok) {
+            window.location.href = "admin-login.html";
+            return null;
+            }
+
+            currentAdminSession = data;
+            return data;
+        } catch (error) {
+            window.location.href = "admin-login.html";
+            return null;
+        }
+    }
+
+    async function login() {
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      if (!email || !password) {
+        showError("Preenche email e password.");
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/admin/auth/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          credentials: "include",
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          showError(data.detail || "Erro no login.");
+          return;
+        }
+
+        window.location.href = "admin-frontend-config.html";
+      } catch (error) {
+        showError("Erro de ligação ao servidor.");
+      }
+    }
+
+    loginBtn.addEventListener("click", login);
+  </script>
+</body>
+</html>
