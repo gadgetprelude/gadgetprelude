@@ -141,9 +141,9 @@ def create_admin_session_cookie(response: Response, user_id: int):
         key=SESSION_COOKIE_NAME,
         value=session_value,
         httponly=True,
-        secure=ADMIN_COOKIE_SECURE,  # em produção depois mudamos para True se estiveres só em HTTPS
-        samesite="lax",
-        max_age=60 * 60 * 8,  # 8 horas
+        secure=ADMIN_COOKIE_SECURE,
+        samesite="none",
+        max_age=60 * 60 * 8,
         path="/"
     )
 
