@@ -2175,7 +2175,7 @@
         uploadLogoBtn.textContent = "Fazer upload";
       }
     }
-    async function loadAdminSession() {
+    /*async function loadAdminSession() {
         try {
             const res = await fetch(`${API_BASE}/admin/auth/me`, {
             credentials: "include"
@@ -2216,7 +2216,7 @@
             showMessage("Erro ao validar sessão admin.", "error");
             return null;
         }
-    }/*
+    }*/
     async function loadAdminSession() {
         try {
             const res = await fetch(`${API_BASE}/admin/auth/me`, {
@@ -2246,7 +2246,7 @@
             window.location.href = "admin-login.html";
             return null;
         }
-    }*/
+    }
 
     async function loadAvailablePermissionKeys() {
         const res = await fetch(`${API_BASE}/admin/permission-keys`, {

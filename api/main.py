@@ -38,13 +38,19 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
-app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+print("FRONTEND_DIR =", FRONTEND_DIR)
+print("admin-login exists =", (FRONTEND_DIR / "admin-login.html").exists())
+print("admin-frontend-config exists =", (FRONTEND_DIR / "admin-frontend-config.html").exists())
+print("index exists =", (FRONTEND_DIR / "index.html").exists())
+print("manage exists =", (FRONTEND_DIR / "manage.html").exists())
 
 SESSION_COOKIE_NAME = "gp_admin_session"
 ADMIN_COOKIE_SECURE = os.getenv("ADMIN_COOKIE_SECURE", "false").lower() == "true"
 session_serializer = URLSafeSerializer(os.getenv("SECRET_KEY", "dev-secret"), salt="gp-admin-session")
 
 app = FastAPI(title="gadgetprelude API")
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
